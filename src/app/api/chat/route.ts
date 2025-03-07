@@ -11,7 +11,7 @@ import { mistral } from '@ai-sdk/mistral';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
 
-export const runtime = 30;
+export const maxDuration = 30;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
