@@ -13,6 +13,9 @@ importers:
             '@ai-sdk/react':
                 specifier: ^1.1.21
                 version: 1.1.21(react@19.0.0)(zod@3.24.2)
+            '@openrouter/ai-sdk-provider':
+                specifier: ^0.4.3
+                version: 0.4.3(zod@3.24.2)
             '@radix-ui/react-label':
                 specifier: ^2.1.2
                 version: 2.1.2(@types/react-dom@19.0.4(@types/react@19.0.10))(@types/react@19.0.10)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -22,6 +25,9 @@ importers:
             '@radix-ui/react-slot':
                 specifier: ^1.1.2
                 version: 1.1.2(@types/react@19.0.10)(react@19.0.0)
+            '@t3-oss/env-nextjs':
+                specifier: ^0.12.0
+                version: 0.12.0(typescript@5.8.2)(zod@3.24.2)
             '@tavily/core':
                 specifier: ^0.3.1
                 version: 0.3.1
@@ -40,9 +46,6 @@ importers:
             lucide-react:
                 specifier: ^0.477.0
                 version: 0.477.0(react@19.0.0)
-            mistral-research:
-                specifier: 'link:'
-                version: 'link:'
             motion:
                 specifier: ^12.4.10
                 version: 12.4.10(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -109,6 +112,18 @@ packages:
         peerDependencies:
             zod: ^3.0.0
 
+    '@ai-sdk/provider-utils@2.1.10':
+        resolution:
+            {
+                integrity: sha512-4GZ8GHjOFxePFzkl3q42AU0DQOtTQ5w09vmaWUf/pKFXJPizlnzKSUkF0f+VkapIUfDugyMqPMT1ge8XQzVI7Q==,
+            }
+        engines: { node: '>=18' }
+        peerDependencies:
+            zod: ^3.0.0
+        peerDependenciesMeta:
+            zod:
+                optional: true
+
     '@ai-sdk/provider-utils@2.1.11':
         resolution:
             {
@@ -125,6 +140,13 @@ packages:
         resolution:
             {
                 integrity: sha512-pco8Zl9U0xwXI+nCLc0woMtxbvjU8hRmGTseAUiPHFLYAAL8trRPCukg69IDeinOvIeo1SmXxAIdWWPZOLb4Cg==,
+            }
+        engines: { node: '>=18' }
+
+    '@ai-sdk/provider@1.0.9':
+        resolution:
+            {
+                integrity: sha512-jie6ZJT2ZR0uVOVCDc9R2xCX5I/Dum/wEK28lx21PJx6ZnFAN9EzD2WsPhcDWfCgGx3OAZZ0GyM3CEobXpa9LA==,
             }
         engines: { node: '>=18' }
 
@@ -408,6 +430,15 @@ packages:
         cpu: [x64]
         os: [win32]
 
+    '@openrouter/ai-sdk-provider@0.4.3':
+        resolution:
+            {
+                integrity: sha512-/MAUj5XFKs6IRZ3WwD8qFyUC6I+yhQ4TsemxvwDk+mbXNiVuJvP5Qc+yJ4fKTfIP4vRiV1sApA/t/La5MgA2FQ==,
+            }
+        engines: { node: '>=18' }
+        peerDependencies:
+            zod: ^3.0.0
+
     '@opentelemetry/api@1.9.0':
         resolution:
             {
@@ -574,6 +605,40 @@ packages:
             {
                 integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==,
             }
+
+    '@t3-oss/env-core@0.12.0':
+        resolution:
+            {
+                integrity: sha512-lOPj8d9nJJTt81mMuN9GMk8x5veOt7q9m11OSnCBJhwp1QrL/qR+M8Y467ULBSm9SunosryWNbmQQbgoiMgcdw==,
+            }
+        peerDependencies:
+            typescript: '>=5.0.0'
+            valibot: ^1.0.0-beta.7 || ^1.0.0
+            zod: ^3.24.0
+        peerDependenciesMeta:
+            typescript:
+                optional: true
+            valibot:
+                optional: true
+            zod:
+                optional: true
+
+    '@t3-oss/env-nextjs@0.12.0':
+        resolution:
+            {
+                integrity: sha512-rFnvYk1049RnNVUPvY8iQ55AuQh1Rr+qZzQBh3t++RttCGK4COpXGNxS4+45afuQq02lu+QAOy/5955aU8hRKw==,
+            }
+        peerDependencies:
+            typescript: '>=5.0.0'
+            valibot: ^1.0.0-beta.7 || ^1.0.0
+            zod: ^3.24.0
+        peerDependenciesMeta:
+            typescript:
+                optional: true
+            valibot:
+                optional: true
+            zod:
+                optional: true
 
     '@tailwindcss/node@4.0.11':
         resolution:
@@ -1887,6 +1952,15 @@ snapshots:
             '@ai-sdk/provider-utils': 2.1.11(zod@3.24.2)
             zod: 3.24.2
 
+    '@ai-sdk/provider-utils@2.1.10(zod@3.24.2)':
+        dependencies:
+            '@ai-sdk/provider': 1.0.9
+            eventsource-parser: 3.0.0
+            nanoid: 3.3.8
+            secure-json-parse: 2.7.0
+        optionalDependencies:
+            zod: 3.24.2
+
     '@ai-sdk/provider-utils@2.1.11(zod@3.24.2)':
         dependencies:
             '@ai-sdk/provider': 1.0.10
@@ -1897,6 +1971,10 @@ snapshots:
             zod: 3.24.2
 
     '@ai-sdk/provider@1.0.10':
+        dependencies:
+            json-schema: 0.4.0
+
+    '@ai-sdk/provider@1.0.9':
         dependencies:
             json-schema: 0.4.0
 
@@ -2026,6 +2104,12 @@ snapshots:
     '@next/swc-win32-x64-msvc@15.2.1':
         optional: true
 
+    '@openrouter/ai-sdk-provider@0.4.3(zod@3.24.2)':
+        dependencies:
+            '@ai-sdk/provider': 1.0.9
+            '@ai-sdk/provider-utils': 2.1.10(zod@3.24.2)
+            zod: 3.24.2
+
     '@opentelemetry/api@1.9.0': {}
 
     '@radix-ui/number@1.1.0': {}
@@ -2119,6 +2203,18 @@ snapshots:
     '@swc/helpers@0.5.15':
         dependencies:
             tslib: 2.8.1
+
+    '@t3-oss/env-core@0.12.0(typescript@5.8.2)(zod@3.24.2)':
+        optionalDependencies:
+            typescript: 5.8.2
+            zod: 3.24.2
+
+    '@t3-oss/env-nextjs@0.12.0(typescript@5.8.2)(zod@3.24.2)':
+        dependencies:
+            '@t3-oss/env-core': 0.12.0(typescript@5.8.2)(zod@3.24.2)
+        optionalDependencies:
+            typescript: 5.8.2
+            zod: 3.24.2
 
     '@tailwindcss/node@4.0.11':
         dependencies:
