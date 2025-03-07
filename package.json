@@ -1,42 +1,49 @@
 {
-  "name": "mistral-research",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "@ai-sdk/mistral": "^1.1.14",
-    "@ai-sdk/react": "^1.1.21",
-    "@radix-ui/react-label": "^2.1.2",
-    "@radix-ui/react-scroll-area": "^1.2.3",
-    "@radix-ui/react-slot": "^1.1.2",
-    "@tavily/core": "^0.3.1",
-    "ai": "^4.1.54",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "exa-js": "^1.5.11",
-    "lucide-react": "^0.477.0",
-    "motion": "^12.4.10",
-    "next": "15.2.1",
-    "next-themes": "^0.4.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "sonner": "^2.0.1",
-    "tailwind-merge": "^3.0.2",
-    "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "packageManager": "pnpm@10.0.0+sha512.b8fef5494bd3fe4cbd4edabd0745df2ee5be3e4b0b8b08fa643aa3e4c6702ccc0f00d68fa8a8c9858a735a0032485a44990ed2810526c875e416f001b17df12b"
+    "name": "mistral-research",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev --turbopack",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint",
+        "prepare": "husky"
+    },
+    "dependencies": {
+        "@ai-sdk/mistral": "^1.1.14",
+        "@ai-sdk/react": "^1.1.21",
+        "@radix-ui/react-label": "^2.1.2",
+        "@radix-ui/react-scroll-area": "^1.2.3",
+        "@radix-ui/react-slot": "^1.1.2",
+        "@tavily/core": "^0.3.1",
+        "ai": "^4.1.54",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
+        "exa-js": "^1.5.11",
+        "lucide-react": "^0.477.0",
+        "motion": "^12.4.10",
+        "next": "15.2.1",
+        "next-themes": "^0.4.4",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "sonner": "^2.0.1",
+        "tailwind-merge": "^3.0.2",
+        "tailwindcss-animate": "^1.0.7",
+        "zod": "^3.24.2"
+    },
+    "devDependencies": {
+        "@tailwindcss/postcss": "^4",
+        "@types/node": "^20",
+        "@types/react": "^19",
+        "@types/react-dom": "^19",
+        "husky": "^9.1.7",
+        "lint-staged": "^15.4.3",
+        "prettier": "3.5.3",
+        "tailwindcss": "^4",
+        "typescript": "^5"
+    },
+    "lint-staged": {
+        "**/*": "prettier --write --ignore-unknown"
+    },
+    "packageManager": "pnpm@10.0.0+sha512.b8fef5494bd3fe4cbd4edabd0745df2ee5be3e4b0b8b08fa643aa3e4c6702ccc0f00d68fa8a8c9858a735a0032485a44990ed2810526c875e416f001b17df12b"
 }
