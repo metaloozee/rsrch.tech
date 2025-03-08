@@ -56,12 +56,12 @@ export default function InputPanel({
         >
             <form onSubmit={handleSubmit} className="max-w-3xl w-full mx-auto">
                 <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ duration: 0.001 }}
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.1 }}
                     className={cn(
-                        'relative flex flex-col w-full p-4 gap-4 border-2 border-neutral-950 shadow-lg bg-neutral-950 focus-within:border-neutral-900 hover:border-neutral-900 transition-all duration-300',
-                        messages.length > 0 ? 'border-2 mb-4 rounded-xl' : 'border-2 rounded-xl'
+                        'relative flex flex-col w-full p-4 gap-2 border border-neutral-900 shadow-lg bg-neutral-900 focus-within:border-accent hover:border-accent transition-all duration-300',
+                        messages.length > 0 ? 'mb-4 rounded-xl' : 'rounded-xl'
                     )}
                 >
                     <Textarea
@@ -75,7 +75,7 @@ export default function InputPanel({
                         placeholder="Ask me anything..."
                         spellCheck={false}
                         value={input}
-                        className="resize-none w-full bg-transparent ring-0 border-0 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="resize-none w-full bg-transparent ring-0 border-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
                         onChange={(e) => {
                             handleInputChange(e);
                         }}

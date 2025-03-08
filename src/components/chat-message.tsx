@@ -61,8 +61,8 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     };
 
     return !inline && match ? (
-        <div className="relative w-full max-w-2xl">
-            <div className="flex items-center justify-between bg-zinc-900/50 px-4 py-2.5 rounded-t-lg border-x border-t border-border">
+        <div className="relative w-full max-w-2xl my-4">
+            <div className="flex items-center justify-between bg-neutral-900 px-4 py-2.5 rounded-t-lg border-x border-t border-border">
                 <div className="flex items-center gap-1.5">
                     <CodeIcon className="size-3 text-muted-foreground" />
                     <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
@@ -71,9 +71,9 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                 </div>
                 <div className="relative">
                     <Button
-                        variant="ghost"
+                        variant="outline"
                         size={'icon'}
-                        className="h-6 w-6 bg-background/60 hover:bg-muted border border-border/50 shadow-sm transition-all duration-200 hover:scale-105 relative overflow-hidden"
+                        className="hover:bg-neutral-800 border border-border/50 shadow-sm transition-all duration-200 hover:scale-105 relative overflow-hidden"
                         onClick={handleCopy}
                         title={isCopied ? 'Copied!' : 'Copy code'}
                     >
@@ -98,9 +98,9 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                                 transition={{ duration: 0.2 }}
                             >
                                 {isCopied ? (
-                                    <CheckIcon className="text-muted-foreground size-2" />
+                                    <CheckIcon className="text-muted-foreground size-3" />
                                 ) : (
-                                    <CopyIcon className="text-muted-foreground size-2" />
+                                    <CopyIcon className="text-muted-foreground size-3" />
                                 )}
                             </motion.div>
                         </AnimatePresence>
@@ -127,13 +127,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                 showLineNumbers
                 language={match[1]}
                 PreTag="div"
-                className="!rounded-t-none !rounded-b-lg !m-0"
-                customStyle={{
-                    background: 'hsl(var(--background))',
-                    padding: '1.25rem 1rem',
-                    border: '1px solid hsl(var(--border))',
-                    borderTop: 'none',
-                }}
+                className="!rounded-t-none !rounded-b-lg !m-0 !bg-neutral-900 border !text-sm"
             >
                 {String(children).replace(/\n$/, '')}
             </SyntaxHighlighter>
@@ -150,32 +144,32 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
 
 const markdownComponents = {
     code: CodeBlock,
-    table: ({ children }: any) => <Table className="border my-4">{children}</Table>,
+    table: ({ children }: any) => <Table className="border">{children}</Table>,
     thead: ({ children }: any) => <TableHeader className="bg-muted/50">{children}</TableHeader>,
     tbody: ({ children }: any) => <TableBody>{children}</TableBody>,
     tr: ({ children }: any) => <TableRow className="hover:bg-muted/30">{children}</TableRow>,
     th: ({ children }: any) => <TableHead className="font-semibold">{children}</TableHead>,
     td: ({ children }: any) => <TableCell>{children}</TableCell>,
-    p: ({ children }: any) => <p className="mb-4 leading-7 text-zinc-300">{children}</p>,
-    h1: ({ children }: any) => <h1 className="text-3xl font-bold mt-6 mb-4">{children}</h1>,
-    h2: ({ children }: any) => <h2 className="text-2xl font-semibold mt-5 mb-3">{children}</h2>,
-    h3: ({ children }: any) => <h3 className="text-xl font-semibold mt-4 mb-2">{children}</h3>,
+    p: ({ children }: any) => <p className="leading-7 text-neutral-300">{children}</p>,
+    h1: ({ children }: any) => <h1 className="text-3xl font-bold mt-6">{children}</h1>,
+    h2: ({ children }: any) => <h2 className="text-2xl font-semibold mt-5">{children}</h2>,
+    h3: ({ children }: any) => <h3 className="text-xl font-semibold mt-4">{children}</h3>,
     ul: ({ children }: any) => (
-        <ul className="list-disc marker:text-muted-foreground list-outside pl-6 mb-4">
-            {children}
-        </ul>
+        <ul className="list-disc marker:text-muted-foreground list-outside pl-6">{children}</ul>
     ),
-    ol: ({ children }: any) => <ol className="list-decimal list-outside pl-6 mb-4">{children}</ol>,
-    li: ({ children }: any) => <li className="mb-1 text-zinc-300">{children}</li>,
+    ol: ({ children }: any) => <ol className="list-decimal list-outside pl-6">{children}</ol>,
+    li: ({ children }: any) => <li className="mb-1 neutral-zinc-300">{children}</li>,
     blockquote: ({ children }: any) => (
-        <blockquote className="border-l-4 border-muted pl-4 italic my-4">{children}</blockquote>
+        <blockquote className="border-l-4 border-muted pl-4 italic">{children}</blockquote>
     ),
     a: ({ children, href }: any) => (
         <Link href={href} target="_blank" className="text-xs text-muted-foreground hover:underline">
             {href ? extractDomain(href) : children}
         </Link>
     ),
-    strong: ({ children }: any) => <strong className="font-bold text-zinc-100">{children}</strong>,
+    strong: ({ children }: any) => (
+        <strong className="font-bold text-neutral-100">{children}</strong>
+    ),
     inlineMath: ({ value }: { value: string }) => <span className="math math-inline">{value}</span>,
     math: ({ value }: { value: string }) => <div className="math math-display">{value}</div>,
 };
@@ -207,18 +201,31 @@ export function BotMessage({ message, className }: BotMessageProps) {
 
     if (containsLaTeX) {
         return (
-            <MemoizedReactMarkdown
-                {...commonProps}
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[
-                    [rehypeExternalLinks, { target: '_blank' }],
-                    rehypeRaw,
-                    rehypeKatex,
-                ]}
-                components={markdownComponents}
+            <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+                className="w-full flex justify-start items-start"
             >
-                {processedData}
-            </MemoizedReactMarkdown>
+                <Avatar className="mr-2">
+                    <AvatarFallback className="bg-neutral-900">
+                        <BrainIcon className="size-4 text-neutral-300" />
+                    </AvatarFallback>
+                </Avatar>
+
+                <MemoizedReactMarkdown
+                    {...commonProps}
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[
+                        [rehypeExternalLinks, { target: '_blank' }],
+                        rehypeRaw,
+                        rehypeKatex,
+                    ]}
+                    components={markdownComponents}
+                >
+                    {processedData}
+                </MemoizedReactMarkdown>
+            </motion.div>
         );
     }
 
@@ -268,7 +275,7 @@ export const UserMessage: React.FC<{ message: string }> = ({ message }) => {
             className="w-full flex justify-start items-center py-4"
         >
             <Avatar className="mr-2">
-                <AvatarFallback className="bg-zinc-900">
+                <AvatarFallback className="bg-neutral-900">
                     <UserCircleIcon className="size-4 text-muted-foreground" />
                 </AvatarFallback>
             </Avatar>
