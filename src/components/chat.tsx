@@ -1,56 +1,77 @@
-"use client"
+'use client';
 
-import { FormEvent, useEffect } from "react"
-import { Message, useChat } from "@ai-sdk/react"
-import { cn } from "@/lib/utils"
+import { FormEvent, useEffect } from 'react';
+import { Message, useChat } from '@ai-sdk/react';
+import { cn } from '@/lib/utils';
 
-import { ScrollArea } from "@/components/ui/scroll-area"
-import InputPanel from "./chat-input"
+import { ScrollArea } from '@/components/ui/scroll-area';
+import InputPanel from './chat-input';
+import { ChatMessages } from './chat-messages';
 
 export default function Chat({
     id,
     savedMessages = [],
 }: {
-    id: string,
-    savedMessages?: Message[]
+    id: string;
+    savedMessages?: Message[];
 }) {
     const {
-        messages, input, handleInputChange, handleSubmit, isLoading, setMessages, stop, append, data, setData
+        messages,
+        input,
+        handleInputChange,
+        handleSubmit,
+        isLoading,
+        setMessages,
+        stop,
+        append,
+        data,
+        setData,
+        setInput,
     } = useChat({
         initialMessages: savedMessages,
         body: {
-            id
-        },
-        onFinish: () => {
-            if (messages.length === 0) {
-                window.history.pushState({}, '', `/${id}`)
-            }
+            id,
         },
         onError: (error) => {
-            console.error(error)
+            console.error(error);
         },
-        sendExtraMessageFields: true
-    })
+        sendExtraMessageFields: true,
+    });
 
     useEffect(() => {
-        setMessages(savedMessages)
-    }, [id])
+        setMessages(savedMessages);
+    }, [id]);
 
     const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault()
-        setData(undefined)
-        handleSubmit(e)
-    }
+        e.preventDefault();
+        setData(undefined);
+        handleSubmit(e);
+    };
 
     return (
-        <div className="h-screen flex flex-col w-full stretch">
-            { messages.length > 0 && (
+        <div
+            className={cn(
+                'h-screen flex flex-col w-full stretch',
+                messages.length === 0
+                    ? 'justify-center items-center'
+                    : 'items-center justify-between'
+            )}
+        >
+            {messages.length > 0 && (
                 <ScrollArea className="w-full flex-grow">
-
+                    <ChatMessages
+                        messages={messages}
+                        isLoading={isLoading}
+                        data={data}
+                        onQuerySelect={(query) => {
+                            setInput(query);
+                        }}
+                        chatId={id}
+                    />
                 </ScrollArea>
             )}
-            
-            <InputPanel 
+
+            <InputPanel
                 input={input}
                 handleInputChange={handleInputChange}
                 handleSubmit={onSubmit}
@@ -61,5 +82,5 @@ export default function Chat({
                 append={append}
             />
         </div>
-    )
+    );
 }

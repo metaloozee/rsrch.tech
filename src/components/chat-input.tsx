@@ -48,7 +48,7 @@ export default function InputPanel({
     return (
         <div
             className={cn(
-                'mx-auto w-full h-full bg-neutral-900',
+                'mx-auto w-full',
                 messages.length > 0
                     ? 'bottom-0 left-0 right-0'
                     : 'flex flex-col items-center justify-center'
@@ -61,7 +61,7 @@ export default function InputPanel({
                     transition={{ duration: 0.001 }}
                     className={cn(
                         'relative flex flex-col w-full p-4 gap-4 border-2 border-neutral-950 shadow-lg bg-neutral-950 focus-within:border-neutral-900 hover:border-neutral-900 transition-all duration-300',
-                        messages.length > 0 ? 'border-2 my-2 rounded-xl' : 'border-2 rounded-xl'
+                        messages.length > 0 ? 'border-2 mb-4 rounded-xl' : 'border-2 rounded-xl'
                     )}
                 >
                     <Textarea

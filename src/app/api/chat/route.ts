@@ -24,39 +24,6 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                //                 const { object: searchQueries } = await generateObject({
-                //                     model: mistral('mistral-small-latest'),
-                //                     messages: convertToCoreMessages(messages),
-                //                     system: `
-                // You are a specialized search assistant designed to extract the essence of a conversation and assist in targeted research.
-
-                // Follow these steps carefully:
-                // 1. Extract the Conversation's Essence:
-                // - Read the conversation thoroughly and identify its overall objective and key topics.
-                // - Determine the primary goal or question that the conversation is centered around.
-
-                // 2. Identify Key Topics:
-                // - Extract the main topics discussed.
-                // - Focus on topics that are relevant to enabling effective research.
-
-                // 3. Generate Web Search Queries:
-                // - Based on the identified goal and topics, create concise and specific web search queries.
-                // - Ensure that each query is actionable, non-overlapping, and designed to retrieve targeted information.
-                // - Limit the total number of queries to a maximum of three.
-
-                // 4. Output Format:
-                // - Your final answer should be a JSON object that includes a key called "search_queries".
-                // - The value associated with "search_queries" should be an array of up to three strings, each representing one web search query.
-
-                // Review your extracted topics and queries to ensure they accurately reflect the conversation's content and purpose.
-                // Ensure queries are actionable and directly related to the identified topics.
-                // Ensure that your output contains only the required JSON object and that the search queries are directly derived from the conversation content.
-                //                     `,
-                //                     schema: z.object({
-                //                         search_queries: z.array(z.string()).max(3),
-                //                     }),
-                //                 });
-
                 const result = await streamText({
                     model: mistral('mistral-large-latest'),
                     messages: convertToCoreMessages(messages),
@@ -122,90 +89,107 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
 
                                 console.log('Search Queries: ', search_queries);
 
-                                const searchResults = [];
+                                // Define interface for search results
+                                interface SearchResult {
+                                    query: string;
+                                    result?: any;
+                                    success: boolean;
+                                    error?: any;
+                                }
 
-                                for (let i = 0; i < search_queries.length; i++) {
-                                    const query = search_queries[i];
+                                const searchResults: SearchResult[] = [];
 
-                                    try {
-                                        dataStream.writeMessageAnnotation({
-                                            type: 'tool-call',
-                                            data: {
-                                                toolCallId,
-                                                toolName: 'web_search',
-                                                state: 'streaming',
-                                                args: JSON.stringify({
-                                                    query_index: i,
-                                                    query: query,
-                                                    status: 'in_progress',
-                                                }),
-                                            },
-                                        });
+                                // Initialize all query statuses as in_progress
+                                search_queries.forEach((query, i) => {
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'tool-call',
+                                        data: {
+                                            toolCallId,
+                                            toolName: 'web_search',
+                                            state: 'streaming',
+                                            args: JSON.stringify({
+                                                query_index: i,
+                                                query: query,
+                                                status: 'in_progress',
+                                            }),
+                                        },
+                                    });
+                                });
 
-                                        const res = await tvly.search(query, {
-                                            maxResults: 5,
-                                            searchDepth: 'advanced',
+                                // Create an array of promises for concurrent execution
+                                const searchPromises = search_queries.map((query, i) => {
+                                    return tvly
+                                        .search(query, {
+                                            maxResults: 1,
+                                            searchDepth: 'basic',
                                             includeImages: true,
                                             includeImageDescriptions: true,
                                             includeAnswer: true,
                                             includeRawContent: true,
-                                        });
+                                        })
+                                        .then((res) => {
+                                            const dedupedResults = deduplicateSearchResults(res);
 
-                                        const dedupedResults = deduplicateSearchResults(res);
+                                            // Add to results array
+                                            searchResults.push({
+                                                query,
+                                                result: dedupedResults,
+                                                success: true,
+                                            });
 
-                                        searchResults.push({
-                                            query,
-                                            result: dedupedResults,
-                                            success: true,
-                                        });
+                                            // Update status for this query
+                                            dataStream.writeMessageAnnotation({
+                                                type: 'tool-call',
+                                                data: {
+                                                    toolCallId,
+                                                    toolName: 'web_search',
+                                                    state: 'streaming',
+                                                    args: JSON.stringify({
+                                                        query_index: i,
+                                                        query: query,
+                                                        status: 'complete',
+                                                        result: dedupedResults,
+                                                    }),
+                                                },
+                                            });
+                                        })
+                                        .catch((error) => {
+                                            console.error(`Error searching for "${query}":`, error);
 
-                                        dataStream.writeMessageAnnotation({
-                                            type: 'tool-call',
-                                            data: {
-                                                toolCallId,
-                                                toolName: 'web_search',
-                                                state: 'streaming',
-                                                args: JSON.stringify({
-                                                    query_index: i,
-                                                    query: query,
-                                                    status: 'complete',
-                                                    result: dedupedResults,
-                                                }),
-                                            },
-                                        });
-                                    } catch (error) {
-                                        console.error(`Error searching for "${query}":`, error);
+                                            searchResults.push({
+                                                query,
+                                                error: (error as Error).message || 'Search failed',
+                                                success: false,
+                                            });
 
-                                        searchResults.push({
-                                            query,
-                                            error: (error as Error).message || 'Search failed',
-                                            success: false,
+                                            dataStream.writeMessageAnnotation({
+                                                type: 'tool-call',
+                                                data: {
+                                                    toolCallId,
+                                                    toolName: 'web_search',
+                                                    state: 'streaming',
+                                                    args: JSON.stringify({
+                                                        query_index: i,
+                                                        query: query,
+                                                        status: 'error',
+                                                        error:
+                                                            (error as Error).message ||
+                                                            'Search failed',
+                                                    }),
+                                                },
+                                            });
                                         });
+                                });
 
-                                        dataStream.writeMessageAnnotation({
-                                            type: 'tool-call',
-                                            data: {
-                                                toolCallId,
-                                                toolName: 'web_search',
-                                                state: 'streaming',
-                                                args: JSON.stringify({
-                                                    query_index: i,
-                                                    query: query,
-                                                    status: 'error',
-                                                    error:
-                                                        (error as Error).message || 'Search failed',
-                                                }),
-                                            },
-                                        });
-                                    }
-                                }
+                                // Wait for all promises to complete
+                                await Promise.all(searchPromises);
 
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
                                     data: {
                                         toolCallId,
                                         toolName: 'web_search',
-                                        state: 'done',
+                                        state: 'result',
                                         args: JSON.stringify({ search_results: searchResults }),
                                     },
                                 });
