@@ -89,7 +89,6 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
 
                                 console.log('Search Queries: ', search_queries);
 
-                                // Define interface for search results
                                 interface SearchResult {
                                     query: string;
                                     result?: any;
@@ -99,7 +98,6 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
 
                                 const searchResults: SearchResult[] = [];
 
-                                // Initialize all query statuses as in_progress
                                 search_queries.forEach((query, i) => {
                                     dataStream.writeMessageAnnotation({
                                         type: 'tool-call',
@@ -116,7 +114,6 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                                     });
                                 });
 
-                                // Create an array of promises for concurrent execution
                                 const searchPromises = search_queries.map((query, i) => {
                                     return tvly
                                         .search(query, {
@@ -130,14 +127,12 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                                         .then((res) => {
                                             const dedupedResults = deduplicateSearchResults(res);
 
-                                            // Add to results array
                                             searchResults.push({
                                                 query,
                                                 result: dedupedResults,
                                                 success: true,
                                             });
 
-                                            // Update status for this query
                                             dataStream.writeMessageAnnotation({
                                                 type: 'tool-call',
                                                 data: {
@@ -181,7 +176,6 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                                         });
                                 });
 
-                                // Wait for all promises to complete
                                 await Promise.all(searchPromises);
 
                                 dataStream.writeMessageAnnotation({

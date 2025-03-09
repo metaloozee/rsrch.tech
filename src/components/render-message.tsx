@@ -2,8 +2,7 @@ import { useMemo, memo } from 'react';
 import { Message, ToolInvocation } from 'ai';
 import { UserMessage } from '@/components/chat-message';
 import { BotMessage } from '@/components/chat-message';
-import { Badge } from '@/components/ui/badge';
-import { LoaderCircleIcon } from 'lucide-react';
+import { Tool } from '@/components/tool';
 
 interface RenderMessageProps {
     message: Message;
@@ -13,20 +12,6 @@ interface RenderMessageProps {
     onQuerySelect: (query: string) => void;
     chatId?: string;
 }
-
-const ToolState = memo(({ state, name }: { state: string; name: string }) => {
-    if (state === 'call') {
-        return (
-            <Badge variant={'outline'}>
-                <LoaderCircleIcon className="size-3" /> Running {name}
-            </Badge>
-        );
-    }
-
-    return <Badge variant={'outline'}>Done</Badge>;
-});
-
-ToolState.displayName = 'ToolState';
 
 export const RenderMessage = memo(function RenderMessage({
     message,
@@ -57,21 +42,29 @@ export const RenderMessage = memo(function RenderMessage({
         ).map(([_, value]) => value);
     }, [message.role, message.parts]);
 
+    console.log(toolData);
+
     if (message.role === 'user') {
         return <UserMessage message={message.content} />;
     }
 
     return (
-        <>
+        <div className="mt-5 space-y-5">
             {toolData && toolData.length > 0 && (
                 <div className="flex flex-row gap-2">
                     {toolData.map((tool) => (
-                        <ToolState key={tool.toolCallId} name={tool.toolName} state={tool.state} />
+                        <Tool
+                            key={tool.toolCallId}
+                            state={tool.state}
+                            name={tool.toolName}
+                            results={tool.state === 'result' && tool.result}
+                        />
                     ))}
                 </div>
             )}
+
             <BotMessage message={message.content} />
-        </>
+        </div>
     );
 });
 
