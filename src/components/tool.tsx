@@ -1,8 +1,10 @@
 'use client';
+
 import { memo } from 'react';
-import { GlobeIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
+import { GlobeIcon, LoaderCircleIcon, LoaderIcon, SearchIcon } from 'lucide-react';
 import { TextShimmer } from './motion-primitives/text-shimmer';
-import { Separator } from './ui/separator';
+import { Separator } from '@/components/ui/separator';
+import Link from 'next/link';
 
 interface ToolProps {
     state: 'call' | 'result' | 'partial-call';
@@ -33,7 +35,7 @@ export const Tool = memo(({ state, name, results }: ToolProps) => {
                             </div>
                             <Separator />
                             <div className="flex w-full flex-col gap-4 justify-center items-center">
-                                <div className="flex w-full gap-6 justify-start items-center">
+                                <div className="flex flex-wrap w-full gap-6 justify-start items-center">
                                     {results.map((res: any, index: number) => (
                                         <div
                                             key={index}
@@ -45,14 +47,21 @@ export const Tool = memo(({ state, name, results }: ToolProps) => {
                                     ))}
                                 </div>
 
-                                <div className="flex w-full gap-2 justify-start items-center">
+                                <div className="flex flex-wrap w-full gap-2 justify-start items-center">
                                     {results.map((res: any, index: number) => (
                                         <div
                                             key={index}
                                             className="py-1 px-2 rounded-md border bg-neutral-800"
                                         >
                                             {res.result.results.map((r: any, idx: number) => (
-                                                <p key={idx}>{r.url}</p>
+                                                <Link
+                                                    target="_blank"
+                                                    href={r.url}
+                                                    key={idx}
+                                                    className="truncate"
+                                                >
+                                                    {r.title}
+                                                </Link>
                                             ))}
                                         </div>
                                     ))}
@@ -60,10 +69,12 @@ export const Tool = memo(({ state, name, results }: ToolProps) => {
                             </div>
                         </div>
                     ) : (
-                        <span className="flex gap-2 justify-center items-center">
-                            <LoaderCircleIcon className="animate-spin size-3" />
-                            <TextShimmer>Searching the Web</TextShimmer>
-                        </span>
+                        <div className="flex w-full flex-row justify-between items-center gap-4">
+                            <div className="flex flex-row gap-2 justify-center items-center">
+                                <GlobeIcon className="size-3" />
+                                <TextShimmer>Searching the Web</TextShimmer>
+                            </div>
+                        </div>
                     )}
                 </div>
             );
