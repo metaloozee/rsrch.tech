@@ -35,7 +35,7 @@ export const Tool = memo(({ state, name, results }: ToolProps) => {
                             </div>
                             <Separator />
                             <div className="flex w-full flex-col gap-4 justify-center items-center">
-                                <div className="flex flex-wrap w-full gap-6 justify-start items-center">
+                                <div className="flex flex-wrap w-full gap-x-6 gap-y-3 justify-start items-center">
                                     {results.map((res: any, index: number) => (
                                         <div
                                             key={index}
@@ -48,23 +48,18 @@ export const Tool = memo(({ state, name, results }: ToolProps) => {
                                 </div>
 
                                 <div className="flex flex-wrap w-full gap-2 justify-start items-center">
-                                    {results.map((res: any, index: number) => (
-                                        <div
-                                            key={index}
-                                            className="py-1 px-2 rounded-md border bg-neutral-800"
-                                        >
-                                            {res.result.results.map((r: any, idx: number) => (
-                                                <Link
-                                                    target="_blank"
-                                                    href={r.url}
-                                                    key={idx}
-                                                    className="truncate"
-                                                >
-                                                    {r.title}
-                                                </Link>
-                                            ))}
-                                        </div>
-                                    ))}
+                                    {results.map((res: any, index: number) => {
+                                        return res.result.results.map((r: any, idx: number) => (
+                                            <Link
+                                                target="_blank"
+                                                href={r.url}
+                                                key={idx}
+                                                className="max-w-xs truncate py-1 px-2 rounded-md border bg-neutral-800"
+                                            >
+                                                {r.title}
+                                            </Link>
+                                        ));
+                                    })}
                                 </div>
                             </div>
                         </div>

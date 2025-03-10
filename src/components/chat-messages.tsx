@@ -34,7 +34,7 @@ export function ChatMessages({
     const showLoading = isLoading && messages[messages.length - 1].role === 'user';
 
     return (
-        <div className="px-4 mb-5 w-full mt-10 mx-auto max-w-3xl">
+        <div className="px-6 mb-10 w-full mt-10 mx-auto max-w-3xl">
             {messages.map((message) => (
                 <RenderMessage
                     key={message.id}
@@ -48,7 +48,7 @@ export function ChatMessages({
             ))}
 
             {showLoading && (
-                <div className="flex justify-center my-4">
+                <div className="flex justify-center items-center my-6">
                     <div className="flex gap-2 items-center text-xs text-neutral-400">
                         <LoaderCircleIcon className="animate-spin size-3" />
                         <span>Thinking...</span>

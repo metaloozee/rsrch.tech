@@ -118,7 +118,7 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                                     return tvly
                                         .search(query, {
                                             maxResults: 1,
-                                            searchDepth: 'basic',
+                                            searchDepth: 'advanced',
                                             includeImages: true,
                                             includeImageDescriptions: true,
                                             includeAnswer: true,

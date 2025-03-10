@@ -25,9 +25,10 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { BrainIcon, UserCircleIcon } from 'lucide-react';
+import { BrainIcon, SparklesIcon, UserCircleIcon } from 'lucide-react';
 import { CopyIcon, CheckIcon, CodeIcon } from 'lucide-react';
 import { Button } from './ui/button';
+import { Separator } from './ui/separator';
 
 const extractDomain = (url: string): string => {
     try {
@@ -207,11 +208,12 @@ export function BotMessage({ message, className }: BotMessageProps) {
                 transition={{ type: 'spring', stiffness: 400, damping: 10 }}
                 className="w-full flex justify-start items-start"
             >
-                <Avatar className="mr-2">
-                    <AvatarFallback className="bg-neutral-900">
-                        <BrainIcon className="size-4 text-neutral-300" />
-                    </AvatarFallback>
-                </Avatar>
+                <div className="flex flex-col my-4 gap-2 w-full">
+                    <div className="flex flex-row justify-start items-center gap-2">
+                        <SparklesIcon className="size-5" />
+                        <p className="text-lg">Answer</p>
+                    </div>
+                </div>
 
                 <MemoizedReactMarkdown
                     {...commonProps}
@@ -234,13 +236,14 @@ export function BotMessage({ message, className }: BotMessageProps) {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: 'spring', stiffness: 400, damping: 10 }}
-            className="w-full flex justify-start items-start"
+            className="w-full flex flex-col justify-start items-start"
         >
-            <Avatar className="mr-2">
-                <AvatarFallback className="bg-neutral-900">
-                    <BrainIcon className="size-4 text-neutral-300" />
-                </AvatarFallback>
-            </Avatar>
+            <div className="flex flex-col my-4 gap-2 w-full">
+                <div className="flex flex-row justify-start items-center gap-2">
+                    <SparklesIcon className="size-5" />
+                    <p className="text-lg">Answer</p>
+                </div>
+            </div>
 
             <MemoizedReactMarkdown
                 {...commonProps}
@@ -274,12 +277,12 @@ export const UserMessage: React.FC<{ message: string }> = ({ message }) => {
             transition={{ type: 'spring', stiffness: 400, damping: 10 }}
             className="w-full flex justify-start items-center py-4"
         >
-            <Avatar className="mr-2">
+            {/* <Avatar className="mr-2">
                 <AvatarFallback className="bg-neutral-900">
                     <UserCircleIcon className="size-4 text-muted-foreground" />
                 </AvatarFallback>
-            </Avatar>
-            <div className="text-muted-foreground">{message}</div>
+            </Avatar> */}
+            <div className="text-muted-foreground text-2xl">{message}</div>
         </motion.div>
     );
 };
