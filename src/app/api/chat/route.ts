@@ -1,6 +1,9 @@
 import {
     convertToCoreMessages,
     createDataStreamResponse,
+    generateId,
+    generateObject,
+    generateText,
     smoothStream,
     streamText,
     tool,
@@ -15,6 +18,13 @@ export const maxDuration = 30;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
+export interface SearchResult {
+    query: string;
+    result?: any;
+    success: boolean;
+    error?: any;
+}
+
 export async function POST(req: Request) {
     try {
         const { messages, id } = await req.json();
@@ -24,6 +34,54 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
+                dataStream.writeMessageAnnotation({
+                    type: 'tool-call',
+                    data: {
+                        toolCallId: generateId(),
+                        toolName: 'query_analysis',
+                        state: 'call',
+                        // args: JSON.stringify({ }),
+                    },
+                });
+
+                const { object: plan } = await generateObject({
+                    model: mistral('mistral-small-latest'),
+                    messages: convertToCoreMessages(messages),
+                    schema: z.object({
+                        goals: z.array(z.string()).max(10),
+                    }),
+                    system: `
+You are a research assistant designed to analyze the full conversation history and prepare a refined roadmap for the research phase. Your task is to:
+
+1. Analyze the Message History: 
+    * Thoroughly review the conversation history to extract key points, objectives, and any implicit or explicit research goals.
+
+2. Articulate and Enhance Goals: 
+    * Based on your analysis, formulate a clear and concise list of actionable research goals. Limit the list to no more than 10 goals. Ensure each goal is specific, measurable, and prioritized.
+
+3. Identify Relevant Research Domains:  
+    * Determine the research domains that align with the conversation, such as technology, academic literature, market trends, etc. Briefly justify why each domain is included to guide subsequent research phases.
+
+4. Plan Tool Integration:  
+    * Acknowledge that you have access to tools like web search. Outline how these tools can be leveraged to acquire additional data, insights, or context relevant to the research goals.
+
+5. Prepare a Structured Roadmap:  
+    * Develop a step-by-step plan that transitions from the goal articulation phase to the main research phase. This should include key milestones, potential research questions, and necessary preparatory steps.
+                    `,
+                });
+
+                console.log('Reseach Plan:', plan);
+
+                dataStream.writeMessageAnnotation({
+                    type: 'tool-call',
+                    data: {
+                        toolCallId: generateId(),
+                        toolName: 'query_analysis',
+                        state: 'result',
+                        args: JSON.stringify({ plan }),
+                    },
+                });
+
                 const result = await streamText({
                     model: mistral('mistral-large-latest'),
                     messages: convertToCoreMessages(messages),
@@ -33,42 +91,47 @@ export async function POST(req: Request) {
                         delayInMs: 15,
                     }),
                     system: `
-You are an advanced research assistant committed to delivering comprehensive, accurate, and well-sourced information.
-Your responses should be thorough, analytical, and presented like a professional technical blog explaining each and every aspect of the topic.
+You are an advanced research assistant committed to delivering comprehensive, accurate, and well-sourced information. 
+Your responses should be thorough, analytical, and presented like a professional technical blog that explains every aspect of the topic. 
+You must strictly adhere to the research plan generated in the previous phase.
 
 ## Core Principles
-- **Comprehensiveness**: Provide detailed information covering multiple aspects of the query.
-- **Accuracy**: Ensure all information is factual and up-to-date.
+- **Comprehensiveness**: Provide detailed and multi-faceted information covering all relevant aspects.
+- **Accuracy**: Ensure all data and information are factually correct and current.
 - **Attribution**: Properly cite sources for all research-derived content.
-- **Organization**: Structure responses with clear sections and logical flow.
-- **Continuity**: Conclude responses by asking about clarity, offering further details, suggesting related topics, or encouraging deeper exploration.
+- **Organization**: Structure responses with clear sections, logical flow, and appropriate markdown formatting.
+- **Continuity**: End responses by confirming clarity, offering additional details, suggesting related topics, or prompting for further exploration.
 
-## Research Workflow
-1. **Analyze Query**: Examine the complete conversation context to understand the user's request and their level of expertise.
-2. **Execute Research**: Use the tools below:
-- **web_search**
-    - Purpose: Retrieve current information from the internet.
-    - Structure each search with:
-        - **Primary terms**: 2+ core concepts directly related to the query.
-        - **Secondary terms**: 3+ related concepts to broaden the search.
-        - **Temporal qualifiers**: Include time-specific terms when the query involves time-sensitive information.
-3. **Notify User**: Inform the user that research is underway while tools are processing.
-4. **Synthesize Information**: Critically evaluate all tool results:
-    - Assess relevance to the query.
-    - Verify accuracy and credibility of sources.
-    - Integrate only the most pertinent information into your response.
-    - Provide necessary context or background information to enhance understanding.
-5. **Follow-up Research**: If initial results are insufficient, conduct additional targeted searches using refined terms.
-6. **Deliver Response**: Create a structured answer that:
-    - Integrates all relevant information from tools into a coherent narrative or argument.
-    - Uses markdown formatting for readability (e.g., headings, bullet points, numbered lists).
-    - Includes proper citations for all research-derived content.
-    - Addresses all aspects of the user's query.
-    - Provides context or background information when necessary.
-    - Avoid any internal texts such as "Alright! I have analyzed the results...", "Here is a detailed explanation...", etc.
+## Research Workflow (Follow the Generated Research Plan)
+1. **Analyze Query and Context**: Examine the complete conversation history to fully understand the user's request and expertise level.
+
+2. **Execute the Research Plan**:  
+   - **Review the Research Plan**: Follow the research plan generated earlier, ensuring every step is addressed.
+   - **Use Tools**: Employ the following tools as directed by the research plan:
+     - **web_search**  
+       - Structure each search with:
+         - **Primary Terms**: At least 2 core concepts directly related to the query.
+         - **Secondary Terms**: At least 3 related concepts to expand the search.
+         - **Temporal Qualifiers**: Include time-specific terms when needed.
+
+3. **Synthesize and Evaluate Information**:  
+   - Critically assess all tool results for relevance, accuracy, and credibility.
+   - Integrate only the most pertinent information, providing necessary context and background.
+
+4. **Conduct Follow-up Research if Necessary**: Refine and execute additional searches using targeted terms if initial results are insufficient.
+
+5. **Deliver the Final Response**:  
+   - Create a well-structured answer that integrates all relevant information into a coherent narrative.
+   - Use markdown for readability (headings, bullet points, numbered lists).
+   - Include proper citations for all research-derived content.
+   - Ensure the response addresses every aspect of the user's query without any extraneous internal commentary.
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
-                    `,
+
+Research Plan:
+${plan ?? null}
+
+`,
                     tools: {
                         web_search: tool({
                             description:
@@ -89,91 +152,27 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
 
                                 console.log('Search Queries: ', search_queries);
 
-                                interface SearchResult {
-                                    query: string;
-                                    result?: any;
-                                    success: boolean;
-                                    error?: any;
-                                }
-
                                 const searchResults: SearchResult[] = [];
 
-                                search_queries.forEach((query, i) => {
-                                    dataStream.writeMessageAnnotation({
-                                        type: 'tool-call',
-                                        data: {
-                                            toolCallId,
-                                            toolName: 'web_search',
-                                            state: 'streaming',
-                                            args: JSON.stringify({
-                                                query_index: i,
-                                                query: query,
-                                                status: 'in_progress',
-                                            }),
-                                        },
+                                const searchPromises = search_queries.map(async (query, i) => {
+                                    const res = await tvly.search(query, {
+                                        maxResults: 1,
+                                        searchDepth: 'advanced',
+                                        includeImages: true,
+                                        includeImageDescriptions: true,
+                                        includeAnswer: true,
+                                        includeRawContent: true,
                                     });
-                                });
 
-                                const searchPromises = search_queries.map((query, i) => {
-                                    return tvly
-                                        .search(query, {
-                                            maxResults: 1,
-                                            searchDepth: 'advanced',
-                                            includeImages: true,
-                                            includeImageDescriptions: true,
-                                            includeAnswer: true,
-                                            includeRawContent: true,
-                                        })
-                                        .then((res) => {
-                                            const dedupedResults = deduplicateSearchResults(res);
+                                    const dedupedResults = deduplicateSearchResults(res);
 
-                                            searchResults.push({
-                                                query,
-                                                result: dedupedResults,
-                                                success: true,
-                                            });
+                                    searchResults.push({
+                                        query,
+                                        result: dedupedResults,
+                                        success: true,
+                                    });
 
-                                            dataStream.writeMessageAnnotation({
-                                                type: 'tool-call',
-                                                data: {
-                                                    toolCallId,
-                                                    toolName: 'web_search',
-                                                    state: 'streaming',
-                                                    args: JSON.stringify({
-                                                        query_index: i,
-                                                        query: query,
-                                                        status: 'complete',
-                                                        result: dedupedResults,
-                                                    }),
-                                                },
-                                            });
-                                        })
-                                        .catch((error) => {
-                                            console.error(`Error searching for "${query}":`, error);
-
-                                            searchResults.push({
-                                                query,
-                                                error: (error as Error).message || 'Search failed',
-                                                success: false,
-                                            });
-
-                                            dataStream.writeMessageAnnotation({
-                                                type: 'tool-call',
-                                                data: {
-                                                    toolCallId,
-                                                    toolName: 'web_search',
-                                                    state: 'streaming',
-                                                    args: JSON.stringify({
-                                                        query_index: i,
-                                                        query: query,
-                                                        status: 'error',
-                                                        error:
-                                                            (error as Error).message ||
-                                                            'Search failed',
-                                                    }),
-                                                },
-                                            });
-                                        });
+                                    return searchResults;
                                 });
 
                                 await Promise.all(searchPromises);

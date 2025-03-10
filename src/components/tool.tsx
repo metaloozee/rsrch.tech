@@ -107,7 +107,7 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
     return (
         <Accordion className={cn('w-full !no-underline', className)}>
             <AccordionItem value="results" className="border-none">
-                <AccordionTrigger className="p-0 w-full">
+                <AccordionTrigger className="p-0 w-full cursor-pointer">
                     <div className="flex w-full flex-col gap-2">
                         <ToolHeader
                             icon={<GlobeIcon className="size-3" />}
@@ -194,6 +194,8 @@ export const Tool = memo(({ state, name, results, className }: ToolProps) => {
                     switch (name) {
                         case 'web_search':
                             return <WebSearchRenderer results={results} />;
+                        case 'query_analysis':
+                            return <GenericToolRenderer name={name} results={results} />;
                         default:
                             return <GenericToolRenderer name={name} results={results} />;
                     }
