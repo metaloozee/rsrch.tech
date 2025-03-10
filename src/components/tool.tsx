@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { GlobeIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
+import { GlobeIcon, LoaderCircleIcon, SearchIcon, ListIcon } from 'lucide-react';
 import { TextShimmer } from './motion-primitives/text-shimmer';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
@@ -13,7 +13,6 @@ import {
 } from '@/components/motion-primitives/accordion';
 import { cn } from '@/lib/utils';
 
-// Tool Components
 export type ToolProps = {
     state: 'call' | 'result' | 'partial-call';
     name: string;
@@ -56,6 +55,20 @@ const ToolLoadingState = ({ name, className }: ToolLoadingStateProps) => {
                     <div className="flex flex-row gap-2 justify-center items-center">
                         <GlobeIcon className="size-3" />
                         <TextShimmer>Running Web Search</TextShimmer>
+                    </div>
+                </div>
+            );
+        case 'research_plan_generator':
+            return (
+                <div
+                    className={cn(
+                        'flex w-full flex-row justify-between items-center gap-4',
+                        className
+                    )}
+                >
+                    <div className="flex flex-row gap-2 justify-center items-center">
+                        <ListIcon className="size-3" />
+                        <TextShimmer>Generating Research Plan</TextShimmer>
                     </div>
                 </div>
             );
@@ -153,6 +166,80 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
     );
 };
 
+const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
+    let parsedResults;
+    let goals = [];
+
+    try {
+        if (typeof results === 'string') {
+            parsedResults = JSON.parse(results);
+            if (parsedResults.plan && Array.isArray(parsedResults.plan.goals)) {
+                goals = parsedResults.plan.goals;
+            } else if (parsedResults && Array.isArray(parsedResults.goals)) {
+                goals = parsedResults.goals;
+            }
+        } else if (results && typeof results === 'object') {
+            if (results.plan && Array.isArray(results.plan.goals)) {
+                goals = results.plan.goals;
+            } else if (results && Array.isArray(results.goals)) {
+                goals = results.goals;
+            }
+        }
+    } catch (e) {
+        // Error parsing results
+    }
+
+    const goalCount = goals.length;
+
+    if (goalCount === 0) {
+        return (
+            <div
+                className={cn('flex w-full flex-col justify-center items-center gap-4', className)}
+            >
+                <ToolHeader
+                    icon={<ListIcon className="size-3" />}
+                    title="Research Plan"
+                    meta={<>0 Goals</>}
+                    className="w-full"
+                />
+                <Separator />
+                <div className="w-full text-center">No research goals found</div>
+            </div>
+        );
+    }
+
+    return (
+        <Accordion className={cn('w-full !no-underline', className)}>
+            <AccordionItem value="results" className="border-none">
+                <AccordionTrigger className="p-0 w-full cursor-pointer">
+                    <div className="flex w-full flex-col gap-2">
+                        <ToolHeader
+                            icon={<ListIcon className="size-3" />}
+                            title="Research Plan"
+                            meta={<>{goalCount} Goals</>}
+                        />
+                    </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                    <div className="flex w-full flex-col gap-4 justify-center items-center pt-4">
+                        <Separator className="w-full" />
+                        <div className="flex flex-col w-full gap-2">
+                            <div className="font-medium">Research Goals:</div>
+                            <ul className="list-disc pl-6 space-y-2">
+                                {goals.map((goal: string, index: number) => (
+                                    <li key={index} className="text-sm">
+                                        {goal}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                </AccordionContent>
+            </AccordionItem>
+        </Accordion>
+    );
+};
+
 export type GenericToolRendererProps = {
     name: string;
     results?: any;
@@ -194,8 +281,8 @@ export const Tool = memo(({ state, name, results, className }: ToolProps) => {
                     switch (name) {
                         case 'web_search':
                             return <WebSearchRenderer results={results} />;
-                        case 'query_analysis':
-                            return <GenericToolRenderer name={name} results={results} />;
+                        case 'research_plan_generator':
+                            return <ResearchPlanRenderer results={results} />;
                         default:
                             return <GenericToolRenderer name={name} results={results} />;
                     }

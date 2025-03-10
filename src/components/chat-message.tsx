@@ -208,7 +208,7 @@ export function BotMessage({ message, className }: BotMessageProps) {
                 transition={{ type: 'spring', stiffness: 400, damping: 10 }}
                 className="w-full flex flex-col justify-start items-start"
             >
-                <div className="mt-2flex flex-row justify-start items-center gap-2">
+                <div className="my-2 flex flex-row justify-start items-center gap-2">
                     <SparklesIcon className="size-4" />
                     <p className="text-sm">Answer</p>
                 </div>
@@ -236,7 +236,7 @@ export function BotMessage({ message, className }: BotMessageProps) {
             transition={{ type: 'spring', stiffness: 400, damping: 10 }}
             className="w-full flex flex-col justify-start items-start"
         >
-            <div className="mt-2 flex flex-row justify-start items-center gap-2">
+            <div className="my-2 flex flex-row justify-start items-center gap-2">
                 <SparklesIcon className="size-4" />
                 <p className="text-sm">Answer</p>
             </div>

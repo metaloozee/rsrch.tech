@@ -42,8 +42,6 @@ export const RenderMessage = memo(function RenderMessage({
         ).map(([_, value]) => value);
     }, [message.role, message.parts]);
 
-    console.log(toolData);
-
     if (message.role === 'user') {
         return <UserMessage message={message.content} />;
     }
@@ -51,7 +49,7 @@ export const RenderMessage = memo(function RenderMessage({
     return (
         <div className="mt-5 space-y-5">
             {toolData && toolData.length > 0 && (
-                <div className="flex flex-row gap-2">
+                <div className="flex flex-col gap-2">
                     {toolData.map((tool) => (
                         <Tool
                             key={tool.toolCallId}

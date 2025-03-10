@@ -34,23 +34,72 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                dataStream.writeMessageAnnotation({
-                    type: 'tool-call',
-                    data: {
-                        toolCallId: generateId(),
-                        toolName: 'query_analysis',
-                        state: 'call',
-                        // args: JSON.stringify({ }),
-                    },
-                });
-
-                const { object: plan } = await generateObject({
-                    model: mistral('mistral-small-latest'),
+                const result = await streamText({
+                    model: mistral('mistral-large-latest'),
                     messages: convertToCoreMessages(messages),
-                    schema: z.object({
-                        goals: z.array(z.string()).max(10),
+                    maxSteps: 5,
+                    experimental_transform: smoothStream({
+                        chunking: 'word',
+                        delayInMs: 15,
                     }),
                     system: `
+You are an advanced research assistant committed to delivering comprehensive, accurate, and well-sourced information. 
+Your responses should be thorough, analytical, and presented like a professional technical blog that explains every aspect of the topic.
+
+## Core Principles
+- **Comprehensiveness**: Provide detailed and multi-faceted information covering all relevant aspects.
+- **Accuracy**: Ensure all data and information are factually correct and current.
+- **Attribution**: Properly cite sources for all research-derived content.
+- **Organization**: Structure responses with clear sections, logical flow, and appropriate markdown formatting.
+- **Continuity**: End responses by confirming clarity, offering additional details, suggesting related topics, or prompting for further exploration.
+
+## Research Workflow - IMPORTANT
+1. **MANDATORY**: Begin EVERY response by using the research_plan_generator tool to create a structured research plan to guide your work.
+
+2. **MANDATORY**: After generating the research plan, ALWAYS use the web_search tool to gather information based on this plan before proceeding with your final answer.
+
+3. **Execute the Research Plan**:  
+   - **Use Tools in this exact order**:
+     1. **research_plan_generator** - Generate a comprehensive plan with specific goals
+     2. **web_search** - Search for information based on the plan
+   - **The research_plan_generator tool must be used first, followed by web_search, for EVERY query**
+
+4. **Synthesize and Evaluate Information**:  
+   - Critically assess all tool results for relevance, accuracy, and credibility.
+   - Integrate only the most pertinent information, providing necessary context and background.
+
+5. **Deliver the Final Response**:  
+   - Create a well-structured answer that integrates all relevant information into a coherent narrative.
+   - Use markdown for readability (headings, bullet points, numbered lists).
+   - Include proper citations for all research-derived content.
+   - Ensure the response addresses every aspect of the user's query without any extraneous internal commentary.
+
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+`,
+                    tools: {
+                        research_plan_generator: tool({
+                            description: 'Generates a structured research plan with specific goals',
+                            parameters: z.object({
+                                query: z.string().optional(),
+                            }),
+                            execute: async ({ query }, { toolCallId }) => {
+                                dataStream.writeMessageAnnotation({
+                                    type: 'tool-call',
+                                    data: {
+                                        toolCallId,
+                                        toolName: 'research_plan_generator',
+                                        state: 'call',
+                                        args: JSON.stringify({ query }),
+                                    },
+                                });
+
+                                const { object: plan } = await generateObject({
+                                    model: mistral('mistral-small-latest'),
+                                    messages: convertToCoreMessages(messages),
+                                    schema: z.object({
+                                        goals: z.array(z.string()).max(10),
+                                    }),
+                                    system: `
 You are a research assistant designed to analyze the full conversation history and prepare a refined roadmap for the research phase. Your task is to:
 
 1. Analyze the Message History: 
@@ -68,71 +117,22 @@ You are a research assistant designed to analyze the full conversation history a
 5. Prepare a Structured Roadmap:  
     * Develop a step-by-step plan that transitions from the goal articulation phase to the main research phase. This should include key milestones, potential research questions, and necessary preparatory steps.
                     `,
-                });
+                                });
 
-                console.log('Reseach Plan:', plan);
+                                dataStream.writeMessageAnnotation({
+                                    type: 'tool-call',
+                                    data: {
+                                        toolCallId,
+                                        toolName: 'research_plan_generator',
+                                        state: 'result',
+                                        args: JSON.stringify({ query }),
+                                        result: JSON.stringify({ plan }),
+                                    },
+                                });
 
-                dataStream.writeMessageAnnotation({
-                    type: 'tool-call',
-                    data: {
-                        toolCallId: generateId(),
-                        toolName: 'query_analysis',
-                        state: 'result',
-                        args: JSON.stringify({ plan }),
-                    },
-                });
-
-                const result = await streamText({
-                    model: mistral('mistral-large-latest'),
-                    messages: convertToCoreMessages(messages),
-                    maxSteps: 5,
-                    experimental_transform: smoothStream({
-                        chunking: 'word',
-                        delayInMs: 15,
-                    }),
-                    system: `
-You are an advanced research assistant committed to delivering comprehensive, accurate, and well-sourced information. 
-Your responses should be thorough, analytical, and presented like a professional technical blog that explains every aspect of the topic. 
-You must strictly adhere to the research plan generated in the previous phase.
-
-## Core Principles
-- **Comprehensiveness**: Provide detailed and multi-faceted information covering all relevant aspects.
-- **Accuracy**: Ensure all data and information are factually correct and current.
-- **Attribution**: Properly cite sources for all research-derived content.
-- **Organization**: Structure responses with clear sections, logical flow, and appropriate markdown formatting.
-- **Continuity**: End responses by confirming clarity, offering additional details, suggesting related topics, or prompting for further exploration.
-
-## Research Workflow (Follow the Generated Research Plan)
-1. **Analyze Query and Context**: Examine the complete conversation history to fully understand the user's request and expertise level.
-
-2. **Execute the Research Plan**:  
-   - **Review the Research Plan**: Follow the research plan generated earlier, ensuring every step is addressed.
-   - **Use Tools**: Employ the following tools as directed by the research plan:
-     - **web_search**  
-       - Structure each search with:
-         - **Primary Terms**: At least 2 core concepts directly related to the query.
-         - **Secondary Terms**: At least 3 related concepts to expand the search.
-         - **Temporal Qualifiers**: Include time-specific terms when needed.
-
-3. **Synthesize and Evaluate Information**:  
-   - Critically assess all tool results for relevance, accuracy, and credibility.
-   - Integrate only the most pertinent information, providing necessary context and background.
-
-4. **Conduct Follow-up Research if Necessary**: Refine and execute additional searches using targeted terms if initial results are insufficient.
-
-5. **Deliver the Final Response**:  
-   - Create a well-structured answer that integrates all relevant information into a coherent narrative.
-   - Use markdown for readability (headings, bullet points, numbered lists).
-   - Include proper citations for all research-derived content.
-   - Ensure the response addresses every aspect of the user's query without any extraneous internal commentary.
-
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
-
-Research Plan:
-${plan ?? null}
-
-`,
-                    tools: {
+                                return plan;
+                            },
+                        }),
                         web_search: tool({
                             description:
                                 'Performs a thorough search on the internet for up-to-date information.',
@@ -149,8 +149,6 @@ ${plan ?? null}
                                         args: JSON.stringify({ search_queries }),
                                     },
                                 });
-
-                                console.log('Search Queries: ', search_queries);
 
                                 const searchResults: SearchResult[] = [];
 
@@ -183,7 +181,8 @@ ${plan ?? null}
                                         toolCallId,
                                         toolName: 'web_search',
                                         state: 'result',
-                                        args: JSON.stringify({ search_results: searchResults }),
+                                        args: JSON.stringify({ search_queries }),
+                                        result: JSON.stringify({ search_results: searchResults }),
                                     },
                                 });
 
@@ -192,8 +191,6 @@ ${plan ?? null}
                         }),
                     },
                 });
-
-                result.consumeStream();
 
                 return result.mergeIntoDataStream(dataStream);
             },
