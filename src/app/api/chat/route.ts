@@ -4,6 +4,7 @@ import {
     generateId,
     generateObject,
     generateText,
+    NoSuchToolError,
     smoothStream,
     streamText,
     tool,
@@ -13,6 +14,8 @@ import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
+
+import { openrouter } from '@openrouter/ai-sdk-provider';
 
 export const maxDuration = 30;
 
@@ -37,7 +40,7 @@ export async function POST(req: Request) {
                 const result = await streamText({
                     model: mistral('mistral-large-latest'),
                     messages: convertToCoreMessages(messages),
-                    maxSteps: 5,
+                    maxSteps: 10,
                     experimental_transform: smoothStream({
                         chunking: 'word',
                         delayInMs: 15,
@@ -61,7 +64,7 @@ Your responses should be thorough, analytical, and presented like a professional
 3. **Execute the Research Plan**:  
    - **Use Tools in this exact order**:
      1. **research_plan_generator** - Generate a comprehensive plan with specific goals
-     2. **web_search** - Search for information based on the plan
+     2. **web_search** - Search for information based on the generated research plan. Generate multiple search queries which can cover up each goal from the research plan.
    - **The research_plan_generator tool must be used first, followed by web_search, for EVERY query**
 
 4. **Synthesize and Evaluate Information**:  
@@ -70,7 +73,7 @@ Your responses should be thorough, analytical, and presented like a professional
 
 5. **Deliver the Final Response**:  
    - Create a well-structured answer that integrates all relevant information into a coherent narrative.
-   - Use markdown for readability (headings, bullet points, numbered lists).
+   - Use *markdown* for readability (headings, bullet points, numbered lists).
    - Include proper citations for all research-derived content.
    - Ensure the response addresses every aspect of the user's query without any extraneous internal commentary.
 
@@ -137,7 +140,7 @@ You are a research assistant designed to analyze the full conversation history a
                             description:
                                 'Performs a thorough search on the internet for up-to-date information.',
                             parameters: z.object({
-                                search_queries: z.array(z.string()).max(3),
+                                search_queries: z.array(z.string()).max(5),
                             }),
                             execute: async ({ search_queries }, { toolCallId }) => {
                                 dataStream.writeMessageAnnotation({
@@ -154,12 +157,10 @@ You are a research assistant designed to analyze the full conversation history a
 
                                 const searchPromises = search_queries.map(async (query, i) => {
                                     const res = await tvly.search(query, {
-                                        maxResults: 1,
-                                        searchDepth: 'advanced',
+                                        maxResults: 2,
+                                        searchDepth: 'basic',
                                         includeImages: true,
-                                        includeImageDescriptions: true,
                                         includeAnswer: true,
-                                        includeRawContent: true,
                                     });
 
                                     const dedupedResults = deduplicateSearchResults(res);
@@ -190,7 +191,70 @@ You are a research assistant designed to analyze the full conversation history a
                             },
                         }),
                     },
+                    experimental_repairToolCall: async ({
+                        toolCall,
+                        tools,
+                        parameterSchema,
+                        error,
+                    }) => {
+                        if (NoSuchToolError.isInstance(error)) {
+                            return null;
+                        }
+
+                        console.log('Repairing the tool: ', toolCall.toolName);
+
+                        const tool = tools[toolCall.toolName as keyof typeof tools];
+
+                        const repairMessage = `
+The model tried to call the tool: ${toolCall.toolName} with the following parameters: ${JSON.stringify(toolCall.args)}.
+The tool accepts the following schema: ${JSON.stringify(parameterSchema(toolCall))}.
+
+Your job is to fix the arguments.
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
+
+                        const { text: repairedText } = await generateText({
+                            model: mistral('mistral-large-latest'),
+                            messages: [
+                                {
+                                    role: 'system',
+                                    content:
+                                        'You are a helpful assistant that generates valid JSON according to a schema.',
+                                },
+                                { role: 'user', content: repairMessage },
+                            ],
+                            temperature: 0,
+                            maxTokens: 500,
+                        });
+
+                        let repairedArgs;
+                        try {
+                            const jsonMatch =
+                                repairedText.match(/```json\n([\s\S]*?)\n```/) ||
+                                repairedText.match(/```\n([\s\S]*?)\n```/) ||
+                                repairedText.match(/\{[\s\S]*\}/);
+
+                            const jsonString = jsonMatch ? jsonMatch[0] : repairedText;
+
+                            repairedArgs = JSON.parse(
+                                jsonString.replace(/```json\n|```\n|```/g, '')
+                            );
+
+                            tool.parameters.parse(repairedArgs);
+
+                            console.log('Repaired Arguments: ', repairedArgs);
+                        } catch (error) {
+                            console.error('Failed to parse or validate repaired arguments:', error);
+                            repairedArgs = JSON.parse(toolCall.args);
+                        }
+
+                        return { ...toolCall, args: JSON.stringify(repairedArgs) };
+                    },
+                    onError(event) {
+                        console.error(event.error);
+                    },
                 });
+
+                result.consumeStream();
 
                 return result.mergeIntoDataStream(dataStream);
             },

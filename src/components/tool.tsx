@@ -125,7 +125,7 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                         <ToolHeader
                             icon={<GlobeIcon className="size-3" />}
                             title="Web Search"
-                            meta={<>{sourceCount} Sources</>}
+                            meta={<>{sourceCount} Source(s)</>}
                         />
                     </div>
                 </AccordionTrigger>
@@ -216,7 +216,7 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
                         <ToolHeader
                             icon={<ListIcon className="size-3" />}
                             title="Research Plan"
-                            meta={<>{goalCount} Goals</>}
+                            meta={<>{goalCount} Goal(s)</>}
                         />
                     </div>
                 </AccordionTrigger>
