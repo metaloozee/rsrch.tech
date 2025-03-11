@@ -15,9 +15,7 @@ import { mistral } from '@ai-sdk/mistral';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
 
-import { openrouter } from '@openrouter/ai-sdk-provider';
-
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
@@ -122,6 +120,8 @@ You are a research assistant designed to analyze the full conversation history a
                     `,
                                 });
 
+                                console.log('Research Plan: ', plan);
+
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
                                     data: {
@@ -152,6 +152,8 @@ You are a research assistant designed to analyze the full conversation history a
                                         args: JSON.stringify({ search_queries }),
                                     },
                                 });
+
+                                console.log('Search Queries: ', search_queries);
 
                                 const searchResults: SearchResult[] = [];
 
