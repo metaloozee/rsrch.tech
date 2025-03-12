@@ -246,7 +246,6 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
                     <div className="flex w-full flex-col gap-4 justify-center items-center pt-4">
                         <Separator className="w-full" />
                         <div className="flex flex-col w-full gap-2">
-                            <div className="font-medium">Research Goals:</div>
                             <ul className="list-disc pl-6 space-y-2">
                                 {goals.map((goal: string, index: number) => (
                                     <li key={index} className="text-xs">
