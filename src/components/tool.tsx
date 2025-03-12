@@ -208,7 +208,7 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
             }
         }
     } catch (e) {
-        // Error parsing results
+        console.error('Error parsing research plan results:', e);
     }
 
     const goalCount = goals.length;

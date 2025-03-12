@@ -63,7 +63,6 @@ Your responses should be thorough, analytical, and presented like a professional
    - **Use Tools in this exact order**:
      1. **research_plan_generator** - Generate a comprehensive plan with specific goals
      2. **web_search** - Search for information based on the generated research plan. Generate multiple search queries which can cover up each goal from the research plan.
-   - **The research_plan_generator tool must be used first, followed by web_search, for EVERY query**
 
 4. **Synthesize and Evaluate Information**:  
    - Critically assess all tool results for relevance, accuracy, and credibility.
@@ -117,7 +116,7 @@ You are a research assistant designed to analyze the full conversation history a
 
 5. Prepare a Structured Roadmap:  
     * Develop a step-by-step plan that transitions from the goal articulation phase to the main research phase. This should include key milestones, potential research questions, and necessary preparatory steps.
-                    `,
+`,
                                 });
 
                                 console.log('Research Plan: ', plan);

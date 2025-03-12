@@ -145,34 +145,53 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
 
 const markdownComponents = {
     code: CodeBlock,
-    table: ({ children }: any) => <Table className="border">{children}</Table>,
+    table: ({ children }: any) => <Table className="border my-4 w-full">{children}</Table>,
     thead: ({ children }: any) => <TableHeader className="bg-muted/50">{children}</TableHeader>,
     tbody: ({ children }: any) => <TableBody>{children}</TableBody>,
     tr: ({ children }: any) => <TableRow className="hover:bg-muted/30">{children}</TableRow>,
-    th: ({ children }: any) => <TableHead className="font-semibold">{children}</TableHead>,
-    td: ({ children }: any) => <TableCell>{children}</TableCell>,
-    p: ({ children }: any) => <p className="leading-7 text-neutral-300">{children}</p>,
-    h1: ({ children }: any) => <h1 className="text-3xl font-bold mt-6">{children}</h1>,
-    h2: ({ children }: any) => <h2 className="text-2xl font-semibold mt-5">{children}</h2>,
-    h3: ({ children }: any) => <h3 className="text-xl font-semibold mt-4">{children}</h3>,
-    ul: ({ children }: any) => (
-        <ul className="list-disc marker:text-muted-foreground list-outside pl-6">{children}</ul>
+    th: ({ children }: any) => <TableHead className="font-semibold p-3">{children}</TableHead>,
+    td: ({ children }: any) => <TableCell className="p-3">{children}</TableCell>,
+    p: ({ children }: any) => <p className="leading-7 mb-4 text-neutral-200">{children}</p>,
+    h1: ({ children }: any) => (
+        <h1 className="text-3xl font-bold mt-8 mb-4 text-white">{children}</h1>
     ),
-    ol: ({ children }: any) => <ol className="list-decimal list-outside pl-6">{children}</ol>,
-    li: ({ children }: any) => <li className="mb-1 neutral-zinc-300">{children}</li>,
+    h2: ({ children }: any) => (
+        <h2 className="text-2xl font-semibold mt-6 mb-3 text-white">{children}</h2>
+    ),
+    h3: ({ children }: any) => (
+        <h3 className="text-xl font-semibold mt-5 mb-3 text-white">{children}</h3>
+    ),
+    h4: ({ children }: any) => (
+        <h4 className="text-lg font-semibold mt-4 mb-2 text-white">{children}</h4>
+    ),
+    ul: ({ children }: any) => (
+        <ul className="list-disc marker:text-muted-foreground list-outside pl-6 mb-4 space-y-1">
+            {children}
+        </ul>
+    ),
+    ol: ({ children }: any) => (
+        <ol className="list-decimal list-outside pl-6 mb-4 space-y-1">{children}</ol>
+    ),
+    li: ({ children }: any) => <li className="mb-1.5 text-neutral-200">{children}</li>,
     blockquote: ({ children }: any) => (
-        <blockquote className="border-l-4 border-muted pl-4 italic">{children}</blockquote>
+        <blockquote className="border-l-4 border-primary/70 pl-4 py-1 my-4 bg-muted/20 rounded-r">
+            {children}
+        </blockquote>
     ),
     a: ({ children, href }: any) => (
-        <Link href={href} target="_blank" className="text-xs text-muted-foreground hover:underline">
-            {href ? extractDomain(href) : children}
+        <Link
+            href={href}
+            target="_blank"
+            className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
+        >
+            {children || (href ? extractDomain(href) : '')}
         </Link>
     ),
-    strong: ({ children }: any) => (
-        <strong className="font-bold text-neutral-100">{children}</strong>
-    ),
+    strong: ({ children }: any) => <strong className="font-bold text-white">{children}</strong>,
+    em: ({ children }: any) => <em className="italic text-neutral-100">{children}</em>,
+    hr: () => <Separator className="my-6" />,
     inlineMath: ({ value }: { value: string }) => <span className="math math-inline">{value}</span>,
-    math: ({ value }: { value: string }) => <div className="math math-display">{value}</div>,
+    math: ({ value }: { value: string }) => <div className="math math-display my-4">{value}</div>,
 };
 
 interface BotMessageProps {
@@ -192,10 +211,13 @@ export function BotMessage({ message, className }: BotMessageProps) {
     const commonProps = {
         className: cn(
             'prose prose-neutral dark:prose-invert max-w-none',
-            'prose-p:leading-7 prose-pre:p-0',
-            'prose-headings:font-semibold',
-            'prose-a:text-primary prose-a:no-underline hover:prose-a:underline',
-            'prose-strong:font-semibold prose-strong:text-foreground',
+            'prose-p:leading-7 prose-p:mb-4',
+            'prose-pre:p-0 prose-pre:my-4',
+            'prose-headings:font-semibold prose-headings:text-white',
+            'prose-a:text-primary prose-a:underline prose-a:underline-offset-2 hover:prose-a:text-primary/80',
+            'prose-strong:font-semibold prose-strong:text-white',
+            'prose-ul:mb-4 prose-ol:mb-4 prose-li:mb-1.5 prose-li:text-neutral-200',
+            'prose-blockquote:border-l-4 prose-blockquote:border-primary/70 prose-blockquote:pl-4 prose-blockquote:py-1 prose-blockquote:bg-muted/20 prose-blockquote:rounded-r',
             className
         ),
     };
