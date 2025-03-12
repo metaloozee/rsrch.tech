@@ -142,22 +142,44 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                         </div>
 
                         <div className="flex flex-wrap w-full gap-2 justify-start items-center">
-                            {results.map((res: any, index: number) => {
-                                if (!res?.result?.results || !Array.isArray(res.result.results)) {
-                                    return null;
-                                }
+                            {(() => {
+                                const allResults = results
+                                    .flatMap((res: any) => res?.result?.results || [])
+                                    .filter(Boolean);
 
-                                return res.result.results.map((r: any, idx: number) => (
-                                    <Link
-                                        target="_blank"
-                                        href={r?.url || '#'}
-                                        key={`${index}-${idx}`}
-                                        className="max-w-xs truncate py-1 px-2 rounded-md border bg-neutral-800"
-                                    >
-                                        {r?.title || 'Untitled'}
-                                    </Link>
-                                ));
-                            })}
+                                const displayResults = allResults.slice(0, 4);
+                                const remainingCount = Math.max(0, allResults.length - 4);
+
+                                return (
+                                    <>
+                                        {displayResults.map((r: any, idx: number) => {
+                                            const url = r?.url || '#';
+                                            let domain = '';
+                                            try {
+                                                domain = new URL(url).hostname.replace('www.', '');
+                                            } catch {
+                                                domain = 'unknown';
+                                            }
+
+                                            return (
+                                                <Link
+                                                    target="_blank"
+                                                    href={url}
+                                                    key={idx}
+                                                    className="max-w-xs truncate py-1 px-2 rounded-md border bg-neutral-800"
+                                                >
+                                                    {domain}
+                                                </Link>
+                                            );
+                                        })}
+                                        {remainingCount > 0 && (
+                                            <span className="py-1 px-2 rounded-md border bg-neutral-800">
+                                                + {remainingCount} sources
+                                            </span>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </div>
                     </div>
                 </AccordionContent>
@@ -227,7 +249,7 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
                             <div className="font-medium">Research Goals:</div>
                             <ul className="list-disc pl-6 space-y-2">
                                 {goals.map((goal: string, index: number) => (
-                                    <li key={index} className="text-sm">
+                                    <li key={index} className="text-xs">
                                         {goal}
                                     </li>
                                 ))}
