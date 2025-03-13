@@ -6,6 +6,7 @@ import {
     generateText,
     NoSuchToolError,
     smoothStream,
+    streamObject,
     streamText,
     tool,
 } from 'ai';
@@ -35,106 +36,104 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                const result = await streamText({
+                const res = await streamText({
                     model: mistral('mistral-large-latest'),
                     messages: convertToCoreMessages(messages),
-                    maxSteps: 10,
-                    experimental_transform: smoothStream({
-                        chunking: 'word',
-                        delayInMs: 15,
-                    }),
-                    system: `
-You are an advanced research assistant committed to delivering comprehensive, accurate, and well-sourced information. 
-Your responses should be thorough, analytical, and presented like a professional technical blog that explains every aspect of the topic.
-
-## Core Principles
-- **Comprehensiveness**: Provide detailed and multi-faceted information covering all relevant aspects.
-- **Accuracy**: Ensure all data and information are factually correct and current.
-- **Attribution**: Properly cite sources for all research-derived content.
-- **Organization**: Structure responses with clear sections, logical flow, and appropriate markdown formatting.
-- **Continuity**: End responses by confirming clarity, offering additional details, suggesting related topics, or prompting for further exploration.
-
-## Research Workflow - IMPORTANT
-1. **MANDATORY**: Begin EVERY response by using the research_plan_generator tool to create a structured research plan to guide your work.
-
-2. **MANDATORY**: After generating the research plan, ALWAYS use the web_search tool to gather information based on this plan before proceeding with your final answer.
-
-3. **Execute the Research Plan**:  
-   - **Use Tools in this exact order**:
-     1. **research_plan_generator** - Generate a comprehensive plan with specific goals
-     2. **web_search** - Search for information based on the generated research plan. Generate multiple search queries which can cover up each goal from the research plan.
-
-4. **Synthesize and Evaluate Information**:  
-   - Critically assess all tool results for relevance, accuracy, and credibility.
-   - Integrate only the most pertinent information, providing necessary context and background.
-
-5. **Deliver the Final Response**:  
-   - Create a well-structured answer that integrates all relevant information into a coherent narrative.
-   - Use *markdown* for readability (headings, bullet points, numbered lists).
-   - Include proper citations for all research-derived content.
-   - Ensure the response addresses every aspect of the user's query without any extraneous internal commentary.
-
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
-`,
+                    toolChoice: 'required',
                     tools: {
                         research_plan_generator: tool({
-                            description: 'Generates a structured research plan with specific goals',
                             parameters: z.object({
-                                query: z.string().optional(),
+                                goals: z
+                                    .array(
+                                        z.object({
+                                            goal: z.string(),
+                                            analysis: z.string(),
+                                        })
+                                    )
+                                    .max(3),
                             }),
-                            execute: async ({ query }, { toolCallId }) => {
-                                dataStream.writeMessageAnnotation({
-                                    type: 'tool-call',
-                                    data: {
-                                        toolCallId,
-                                        toolName: 'research_plan_generator',
-                                        state: 'call',
-                                        args: JSON.stringify({ query }),
-                                    },
-                                });
-
-                                const { object: plan } = await generateObject({
-                                    model: mistral('mistral-small-latest'),
-                                    messages: convertToCoreMessages(messages),
-                                    schema: z.object({
-                                        goals: z.array(z.string()).max(10),
-                                    }),
-                                    system: `
-You are a research assistant designed to analyze the full conversation history and prepare a refined roadmap for the research phase. Your task is to:
-
-1. Analyze the Message History: 
-    * Thoroughly review the conversation history to extract key points, objectives, and any implicit or explicit research goals.
-
-2. Articulate and Enhance Goals: 
-    * Based on your analysis, formulate a clear and concise list of actionable research goals. Limit the list to no more than 10 goals. Ensure each goal is specific, measurable, and prioritized.
-
-3. Identify Relevant Research Domains:  
-    * Determine the research domains that align with the conversation, such as technology, academic literature, market trends, etc. Briefly justify why each domain is included to guide subsequent research phases.
-
-4. Plan Tool Integration:  
-    * Acknowledge that you have access to tools like web search. Outline how these tools can be leveraged to acquire additional data, insights, or context relevant to the research goals.
-
-5. Prepare a Structured Roadmap:  
-    * Develop a step-by-step plan that transitions from the goal articulation phase to the main research phase. This should include key milestones, potential research questions, and necessary preparatory steps.
-`,
-                                });
-
-                                console.log('Research Plan: ', plan);
-
+                            execute: async ({ goals }, { toolCallId }) => {
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
                                     data: {
                                         toolCallId,
                                         toolName: 'research_plan_generator',
                                         state: 'result',
-                                        args: JSON.stringify({ query }),
-                                        result: JSON.stringify({ plan }),
+                                        args: JSON.stringify({ goals }),
+                                        result: JSON.stringify({ goals }),
                                     },
                                 });
 
-                                return plan;
+                                console.log('Goals: ', goals);
+
+                                return goals;
                             },
                         }),
+                    },
+                    system: `
+You are a language model designed to assist a research assistant application that has access to the internet. 
+Your primary function is to analyze the complete chat history along with the most recent query to extract the main goals that the user intends to achieve. 
+
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+Follow these steps carefully:
+1. Context Analysis
+    - Review the full chat history and the latest query.
+    - Identify recurring themes, requests, and explicit instructions.
+    - Determine the primary objectives that the user is aiming for, ensuring no important details are overlooked.
+
+2. Goal Extraction
+    - Extract and list each main goal mentioned or implied in the conversation.
+    - For each goal, ensure that you capture the essence of the objective succinctly and clearly.
+    - If any goal appears to have multiple facets, split it into individual actionable components.
+
+3. Research Analysis Generation
+    - For every extracted goal, generate a corresponding research analysis plan to be performed after the goal's completion.
+    - The research analysis should include:
+        - Key Questions: What specific questions should be answered to confirm the goal has been met effectively?
+        - Data Sources: Identify the types of online sources or databases that might be relevant.
+        - Methodology: Outline a step-by-step plan for conducting the analysis (e.g., literature reviews, data scraping, statistical methods, comparative analysis, etc.).
+        - Verification Steps: Include methods to validate the accuracy and relevance of the research findings.
+        - Next Steps: Suggest subsequent actions or follow-up research that could further enhance understanding or application of the goal's outcomes.
+
+4. Additional Considerations
+    - Maintain a balance between brevity and comprehensiveness, so that the research analysis plan is detailed yet succinct enough to be actionable.
+    - Prioritize clarity and directness so that subsequent automated modules or human users can follow your output without ambiguity.
+    - You are allowed to generate up to 3 goals.
+`,
+                });
+
+                res.mergeIntoDataStream(dataStream, {
+                    experimental_sendFinish: false,
+                });
+
+                const toolResult = await streamText({
+                    model: mistral('mistral-large-latest'),
+                    messages: [
+                        ...convertToCoreMessages(messages),
+                        ...(await res.response).messages,
+                    ],
+                    maxSteps: 5,
+                    system: `
+You are a research assistant tasked with delivering comprehensive, precise, and credible information based on a given Research Plan.
+
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+Steps:
+1. Analyze the attached Research Plan to identify individual research goals.
+2. Generate multiple focused search queries for each identified goal.
+3. Call the designated tools (e.g., web_search) to fetch the latest information relevant to each query.
+4. Critically evaluate the results for accuracy, relevance, and credibility.
+5. Synthesize the data into coherent answers for each research goal, noting any gaps or inconsistencies.
+6. If the research gaps are too large or if responses stray from the goals, refine your queries and repeat tool execution.
+
+Tool Call Guidelines:
+- Use each tool once per cycle.
+- You may perform multiple calls with different parameters when needed.
+- Always run and review tool outputs before writing your final synthesis.
+
+                    `,
+                    tools: {
                         web_search: tool({
                             description:
                                 'Performs a thorough search on the internet for up-to-date information.',
@@ -255,9 +254,47 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                     },
                 });
 
-                result.consumeStream();
+                toolResult.mergeIntoDataStream(dataStream, {
+                    experimental_sendFinish: false,
+                });
 
-                return result.mergeIntoDataStream(dataStream);
+                const responseResult = await streamText({
+                    model: mistral('mistral-large-latest'),
+                    messages: [
+                        ...convertToCoreMessages(messages),
+                        ...(await res.response).messages,
+                        ...(await toolResult.response).messages,
+                    ],
+                    experimental_transform: smoothStream({
+                        chunking: 'word',
+                        delayInMs: 30,
+                    }),
+                    system: `
+You are a high-level research assistant responsible for providing comprehensive, credible, and precise information using the context from previous steps (e.g., research planning, data retrieval).
+
+Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+Primary Goals:
+- Strictly adhere to guidelines and focus on the user's needs.
+- Deliver responses that are accurate, detailed, and structured.
+- Avoid fabrications by sticking to provided context and including proper citations.
+- Follow all formatting rules without exception.
+
+Response Structure:
+1. Start with a clear and direct answer to the question.
+2. Follow up with a comprehensive explanation, structured like a technical blog post with appropriate headings.
+3. Use markdown formatting (including tables where useful) and clearly demarcate inline math with '$' and block math with '$$' (do not use '$' for USD amounts; use "USD" instead).
+4. In subsequent interactions that are not search queries or feedback-related, engage in a natural, conversational tone.
+
+Your responses should be well-organized, technically insightful, and directly address the query.
+                    `,
+                });
+
+                responseResult.consumeStream();
+
+                return responseResult.mergeIntoDataStream(dataStream, {
+                    experimental_sendStart: false,
+                });
             },
         });
     } catch (error) {

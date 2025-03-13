@@ -203,8 +203,8 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
         } else if (results && typeof results === 'object') {
             if (results.plan && Array.isArray(results.plan.goals)) {
                 goals = results.plan.goals;
-            } else if (results && Array.isArray(results.goals)) {
-                goals = results.goals;
+            } else if (Array.isArray(results)) {
+                goals = results;
             }
         }
     } catch (e) {
@@ -220,8 +220,8 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
             >
                 <ToolHeader
                     icon={<ListIcon className="size-3" />}
-                    title="Research Plan"
-                    meta={<>0 Goals</>}
+                    title="Research Goals"
+                    meta={<>0</>}
                     className="w-full"
                 />
                 <Separator />
@@ -237,8 +237,8 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
                     <div className="flex w-full flex-col gap-2">
                         <ToolHeader
                             icon={<ListIcon className="size-3" />}
-                            title="Research Plan"
-                            meta={<>{goalCount} Goals</>}
+                            title="Research Goals"
+                            meta={<>{goalCount}</>}
                         />
                     </div>
                 </AccordionTrigger>
@@ -247,11 +247,13 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
                         <Separator className="w-full" />
                         <div className="flex flex-col w-full gap-2">
                             <ul className="list-disc pl-6 space-y-2">
-                                {goals.map((goal: string, index: number) => (
-                                    <li key={index} className="text-xs">
-                                        {goal}
-                                    </li>
-                                ))}
+                                {goals.map(
+                                    (goal: { goal: string; analysis: string }, index: number) => (
+                                        <li key={index} className="text-xs">
+                                            {goal.goal}
+                                        </li>
+                                    )
+                                )}
                             </ul>
                         </div>
                     </div>
