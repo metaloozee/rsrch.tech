@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         return createDataStreamResponse({
             async execute(dataStream) {
                 const res = await streamText({
-                    model: mistral('mistral-large-latest'),
+                    model: mistral('mistral-small-latest'),
                     messages: convertToCoreMessages(messages),
                     toolChoice: 'required',
                     tools: {
