@@ -7,10 +7,11 @@ import { cn } from '@/lib/utils';
 import { Message } from '@ai-sdk/react';
 import { useRef, useState } from 'react';
 import { CornerDownLeftIcon, StopCircleIcon } from 'lucide-react';
+import { Input } from './ui/input';
 
 interface InputPanelProps {
     input: string;
-    handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+    handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
     isLoading: boolean;
     messages: Message[];
@@ -29,7 +30,7 @@ export default function InputPanel({
     stop,
     append,
 }: InputPanelProps) {
-    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
     const isFirstMessage = useRef(true);
 
     const [isComposing, setIsComposing] = useState(false);
@@ -64,16 +65,14 @@ export default function InputPanel({
                         messages.length > 0 ? 'mb-4 rounded-xl' : 'rounded-xl'
                     )}
                 >
-                    <Textarea
+                    <Input
                         autoFocus
                         onCompositionStart={handleCompositionStart}
                         onCompositionEnd={handleCompositionEnd}
                         ref={inputRef}
                         name="input"
-                        rows={1}
-                        tabIndex={0}
                         placeholder="Ask me anything..."
-                        spellCheck={false}
+                        spellCheck={true}
                         value={input}
                         className="resize-none w-full bg-transparent ring-0 border-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
                         onChange={(e) => {
