@@ -71,7 +71,9 @@ export default function InputPanel({
                         onCompositionEnd={handleCompositionEnd}
                         ref={inputRef}
                         name="input"
-                        placeholder="Ask me anything..."
+                        placeholder={
+                            messages.length > 0 ? 'Ask follow-up...' : 'Ask me anything...'
+                        }
                         spellCheck={true}
                         value={input}
                         className="resize-none w-full bg-transparent ring-0 border-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
