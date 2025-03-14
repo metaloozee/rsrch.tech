@@ -8,6 +8,7 @@ import { Message } from '@ai-sdk/react';
 import { useRef, useState } from 'react';
 import { CornerDownLeftIcon, StopCircleIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { useMobileView } from '@/lib/hooks';
 
 interface InputPanelProps {
     input: string;
@@ -30,6 +31,8 @@ export default function InputPanel({
     stop,
     append,
 }: InputPanelProps) {
+    const isMobile = useMobileView();
+
     const inputRef = useRef<HTMLInputElement>(null);
     const isFirstMessage = useRef(true);
 
@@ -50,9 +53,11 @@ export default function InputPanel({
         <div
             className={cn(
                 'mx-auto w-full',
-                messages.length > 0
+                isMobile
                     ? 'bottom-0 left-0 right-0'
-                    : 'flex flex-col items-center justify-center'
+                    : messages.length > 0
+                      ? 'bottom-0 left-0 right-0'
+                      : 'flex flex-col items-center justify-center'
             )}
         >
             <form onSubmit={handleSubmit} className="max-w-3xl w-full mx-auto">
@@ -62,7 +67,11 @@ export default function InputPanel({
                     transition={{ duration: 0.1 }}
                     className={cn(
                         'relative flex flex-col w-full p-4 gap-2 border border-neutral-900 shadow-lg bg-neutral-900 focus-within:border-accent hover:border-accent transition-all duration-300',
-                        messages.length > 0 ? 'mb-4 rounded-xl' : 'rounded-xl'
+                        isMobile
+                            ? 'rounded-t-xl'
+                            : messages.length > 0
+                              ? 'mb-4 rounded-xl'
+                              : 'rounded-xl'
                     )}
                 >
                     <Input

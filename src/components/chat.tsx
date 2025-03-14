@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import InputPanel from './chat-input';
 import { ChatMessages } from './chat-messages';
+import { useMobileView } from '@/lib/hooks';
 
 export default function Chat({
     id,
@@ -15,6 +16,8 @@ export default function Chat({
     id: string;
     savedMessages?: Message[];
 }) {
+    const isMobile = useMobileView();
+
     const {
         messages,
         input,
@@ -52,9 +55,11 @@ export default function Chat({
         <div
             className={cn(
                 'h-screen flex flex-col w-full stretch',
-                messages.length === 0
-                    ? 'justify-center items-center'
-                    : 'items-center justify-between'
+                isMobile
+                    ? 'items-end justify-end'
+                    : messages.length === 0
+                      ? 'justify-center items-center'
+                      : 'items-center justify-between'
             )}
         >
             {messages.length > 0 && (
