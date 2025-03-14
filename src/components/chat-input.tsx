@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { Message } from '@ai-sdk/react';
 import { useRef, useState } from 'react';
 import { CornerDownLeftIcon, StopCircleIcon } from 'lucide-react';
-import { Input } from './ui/input';
+import { Input } from '@/components/ui/input';
 
 interface InputPanelProps {
     input: string;

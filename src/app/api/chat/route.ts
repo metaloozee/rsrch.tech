@@ -1,12 +1,9 @@
 import {
     convertToCoreMessages,
     createDataStreamResponse,
-    generateId,
-    generateObject,
     generateText,
     NoSuchToolError,
     smoothStream,
-    streamObject,
     streamText,
     tool,
 } from 'ai';
@@ -36,10 +33,14 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
+                console.log('Step 1: Goal Extraction');
                 const res = await streamText({
                     model: mistral('mistral-small-latest'),
                     messages: convertToCoreMessages(messages),
                     toolChoice: 'required',
+                    onError: ({ error }) => {
+                        console.error('Error Occurred in Step 1: ', error);
+                    },
                     tools: {
                         research_plan_generator: tool({
                             parameters: z.object({
@@ -107,6 +108,8 @@ Follow these steps carefully:
                     experimental_sendFinish: false,
                 });
 
+                console.log('Step 2: Tool Execution');
+
                 const toolResult = await streamText({
                     model: mistral('mistral-large-latest'),
                     messages: [
@@ -114,6 +117,9 @@ Follow these steps carefully:
                         ...(await res.response).messages,
                     ],
                     maxSteps: 5,
+                    onError: ({ error }) => {
+                        console.error('Error Occurred in Step 2: ', error);
+                    },
                     system: `
 You are a research assistant tasked with delivering comprehensive, precise, and credible information based on a given Research Plan.
 
@@ -249,14 +255,13 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
 
                         return { ...toolCall, args: JSON.stringify(repairedArgs) };
                     },
-                    onError(event) {
-                        console.error(event.error);
-                    },
                 });
 
                 toolResult.mergeIntoDataStream(dataStream, {
                     experimental_sendFinish: false,
                 });
+
+                console.log('Step 3: Response Generation');
 
                 const responseResult = await streamText({
                     model: mistral('mistral-large-latest'),
@@ -269,6 +274,9 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                         chunking: 'word',
                         delayInMs: 30,
                     }),
+                    onError: ({ error }) => {
+                        console.error('Error Occurred in Step 3: ', error);
+                    },
                     system: `
 You are a high-level research assistant responsible for providing comprehensive, credible, and precise information using the context from previous steps (e.g., research planning, data retrieval).
 
@@ -294,6 +302,7 @@ Your responses should be well-organized, technically insightful, and directly ad
 
                 return responseResult.mergeIntoDataStream(dataStream, {
                     experimental_sendStart: false,
+                    sendReasoning: false,
                 });
             },
         });
