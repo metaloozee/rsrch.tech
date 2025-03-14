@@ -54,7 +54,7 @@ export default function Chat({
     return (
         <div
             className={cn(
-                'h-screen flex flex-col w-full stretch',
+                'h-screen flex flex-col w-full stretch col-span-2',
                 isMobile
                     ? 'items-end justify-end'
                     : messages.length === 0

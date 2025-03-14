@@ -181,6 +181,47 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                                 );
                             })()}
                         </div>
+
+                        <div className="flex flex-wrap w-full gap-3 justify-start items-center mt-2">
+                            {(() => {
+                                const allImages = results
+                                    .flatMap((res: any) => res?.result?.images || [])
+                                    .filter(Boolean);
+
+                                const displayImages = allImages.slice(0, 6);
+                                const remainingCount = Math.max(0, allImages.length - 6);
+
+                                return (
+                                    <>
+                                        {displayImages.map((img: any, idx: number) => {
+                                            const imageUrl = img?.url || '#';
+                                            const sourceUrl = img?.source_url || imageUrl;
+
+                                            return (
+                                                <Link
+                                                    target="_blank"
+                                                    href={sourceUrl}
+                                                    key={idx}
+                                                    className="relative w-36 aspect-[16/9] overflow-hidden rounded-md border bg-neutral-800 hover:opacity-90 transition-opacity"
+                                                >
+                                                    <img
+                                                        src={imageUrl}
+                                                        alt={img?.alt_text || 'Search result image'}
+                                                        className="absolute top-0 left-0 h-full w-full object-cover"
+                                                        loading="lazy"
+                                                    />
+                                                </Link>
+                                            );
+                                        })}
+                                        {remainingCount > 0 && (
+                                            <span className="py-1 px-2 rounded-md border bg-neutral-800">
+                                                + {remainingCount} images
+                                            </span>
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
                     </div>
                 </AccordionContent>
             </AccordionItem>
@@ -220,12 +261,12 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
             >
                 <ToolHeader
                     icon={<ListIcon className="size-3" />}
-                    title="Research Goals"
+                    title="Search Goals"
                     meta={<>0</>}
                     className="w-full"
                 />
                 <Separator />
-                <div className="w-full text-center">No research goals found</div>
+                <div className="w-full text-center">No Search Goals found</div>
             </div>
         );
     }
@@ -237,7 +278,7 @@ const ResearchPlanRenderer = ({ results, className }: ToolRendererProps) => {
                     <div className="flex w-full flex-col gap-2">
                         <ToolHeader
                             icon={<ListIcon className="size-3" />}
-                            title="Research Goals"
+                            title="Search Goals"
                             meta={<>{goalCount}</>}
                         />
                     </div>

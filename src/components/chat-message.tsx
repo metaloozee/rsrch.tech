@@ -62,8 +62,8 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     };
 
     return !inline && match ? (
-        <div className="relative w-full max-w-2xl my-4">
-            <div className="flex items-center justify-between bg-neutral-900 px-4 py-2.5 rounded-t-lg border-x border-t border-border">
+        <div className="relative w-full my-4">
+            <div className="flex items-center justify-between bg-neutral-900 px-4 py-1 rounded-t-lg border-x border-t border-border">
                 <div className="flex items-center gap-1.5">
                     <CodeIcon className="size-3 text-muted-foreground" />
                     <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
@@ -72,9 +72,9 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                 </div>
                 <div className="relative">
                     <Button
-                        variant="outline"
+                        variant="ghost"
                         size={'icon'}
-                        className="hover:bg-neutral-800 border border-border/50 shadow-sm transition-all duration-200 hover:scale-105 relative overflow-hidden"
+                        className="transition-all duration-200 relative overflow-hidden"
                         onClick={handleCopy}
                         title={isCopied ? 'Copied!' : 'Copy code'}
                     >
