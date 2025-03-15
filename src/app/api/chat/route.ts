@@ -12,6 +12,7 @@ import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
+import { openrouter } from '@openrouter/ai-sdk-provider';
 
 export const maxDuration = 60;
 
@@ -33,7 +34,6 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                console.log('Step 1: Goal Extraction');
                 const res = await streamText({
                     model: mistral('mistral-small-latest'),
                     messages: convertToCoreMessages(messages),
@@ -43,6 +43,8 @@ export async function POST(req: Request) {
                     },
                     tools: {
                         research_plan_generator: tool({
+                            description:
+                                'REQUIRED tool that must be called to generate research goals. You MUST wait for the results of this tool before responding.',
                             parameters: z.object({
                                 goals: z
                                     .array(
@@ -108,7 +110,10 @@ Follow these steps carefully:
                     experimental_sendFinish: false,
                 });
 
-                console.log('Step 2: Tool Execution');
+                const goalCount = (await res.response).messages
+                    .filter((m) => m.role === 'tool')
+                    .flatMap((g) => (g.content[0].result as unknown as any).length)
+                    .toLocaleString();
 
                 const toolResult = await streamText({
                     model: mistral('mistral-large-latest'),
@@ -116,7 +121,8 @@ Follow these steps carefully:
                         ...convertToCoreMessages(messages),
                         ...(await res.response).messages,
                     ],
-                    maxSteps: 5,
+                    toolChoice: 'required',
+                    maxSteps: parseInt(goalCount),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 2: ', error);
                     },
@@ -125,24 +131,28 @@ You are a research assistant tasked with delivering comprehensive, precise, and 
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
+CRITICAL INSTRUCTION:
+- You MUST use the web_search tool to fetch information relevant to the research goals.
+- NEVER respond without calling the web_search tool.
+- DO NOT hallucinate search results.
+- For EACH research goal, you MUST use the web_search tool at least once.
+- You can make multiple tool calls as needed, but each must be purposeful.
+- ALWAYS run and review tool outputs before writing your final synthesis.
+
 Steps:
 1. Analyze the attached Research Plan to identify individual research goals.
 2. Generate multiple focused search queries for each identified goal.
-3. Call the designated tools (e.g., web_search) to fetch the latest information relevant to each query.
+3. Call the web_search tool to fetch the latest information relevant to each query.
 4. Critically evaluate the results for accuracy, relevance, and credibility.
 5. Synthesize the data into coherent answers for each research goal, noting any gaps or inconsistencies.
 6. If the research gaps are too large or if responses stray from the goals, refine your queries and repeat tool execution.
 
-Tool Call Guidelines:
-- Use each tool once per cycle.
-- You may perform multiple calls with different parameters when needed.
-- Always run and review tool outputs before writing your final synthesis.
-
+You MUST execute this entire process through proper tool calls. NEVER skip tool execution.
                     `,
                     tools: {
                         web_search: tool({
                             description:
-                                'Performs a thorough search on the internet for up-to-date information.',
+                                'REQUIRED tool that must be called to perform internet searches. You MUST wait for the results of this tool before responding.',
                             parameters: z.object({
                                 search_queries: z.array(z.string()).max(5),
                             }),
@@ -164,7 +174,7 @@ Tool Call Guidelines:
                                 const searchPromises = search_queries.map(async (query, i) => {
                                     const res = await tvly.search(query, {
                                         maxResults: 2,
-                                        searchDepth: 'basic',
+                                        searchDepth: 'advanced',
                                         includeImages: true,
                                         includeAnswer: true,
                                     });
@@ -219,7 +229,7 @@ Your job is to fix the arguments.
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
 
                         const { text: repairedText } = await generateText({
-                            model: mistral('mistral-large-latest'),
+                            model: mistral('mistral-small-latest'),
                             messages: [
                                 {
                                     role: 'system',
@@ -260,8 +270,6 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 toolResult.mergeIntoDataStream(dataStream, {
                     experimental_sendFinish: false,
                 });
-
-                console.log('Step 3: Response Generation');
 
                 const responseResult = await streamText({
                     model: mistral('mistral-large-latest'),
