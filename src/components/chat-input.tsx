@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { Message } from '@ai-sdk/react';
 import { useRef, useState } from 'react';
-import { CornerDownLeftIcon, StopCircleIcon } from 'lucide-react';
+import { CornerDownLeftIcon, GlobeLock, ScanSearchIcon, StopCircleIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useMobileView } from '@/lib/hooks';
 
@@ -60,6 +60,34 @@ export default function InputPanel({
                       : 'flex flex-col items-center justify-center'
             )}
         >
+            {messages.length === 0 &&
+                (isMobile ? (
+                    <motion.div
+                        initial={{ y: -10, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="mt-60 flex justify-center items-center h-screen w-full mx-auto"
+                    >
+                        <div className="flex gap-5 flex-col justify-center items-center">
+                            <ScanSearchIcon className="size-10 text-neutral-700" />
+                            <h1 className="font-mono text-2xl text-neutral-700 text-center max-w-[50vw]">
+                                what do you like to know?
+                            </h1>
+                        </div>
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        initial={{ y: -10, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="mb-5 flex flex-col gap-2 justify-center items-center"
+                    >
+                        <ScanSearchIcon className=" text-neutral-800" />
+                        <h1 className="font-mono text-2xl text-neutral-800">
+                            what do you like to know?
+                        </h1>
+                    </motion.div>
+                ))}
             <form onSubmit={handleSubmit} className="max-w-3xl w-full mx-auto">
                 <motion.div
                     initial={{ scale: 0.5, opacity: 0 }}
