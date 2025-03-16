@@ -109,7 +109,7 @@ export const RenderMessage = memo(function RenderMessage({
 
             <BotMessage message={message.content} />
 
-            {message.role === 'assistant' && (
+            {message.role === 'assistant' && message.content && (
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}

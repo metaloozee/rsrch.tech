@@ -115,7 +115,7 @@ export default function InputPanel({
                         initial={{ y: -10, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ delay: 0.2 }}
-                        className="flex justify-center items-center h-screen w-full mx-auto"
+                        className="flex justify-center items-center h-[80vh] w-full mx-auto"
                     >
                         <div className="flex gap-5 flex-col justify-center items-center">
                             <ScanSearchIcon className="size-10 text-neutral-700" />
