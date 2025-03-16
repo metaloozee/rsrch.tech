@@ -53,6 +53,26 @@ export default function Chat({
         handleSubmit(e);
     };
 
+    const handleRetry = (message: Message) => {
+        if (message.role === 'assistant') {
+            // Find the user message that preceded this assistant message
+            const index = messages.findIndex((m) => m.id === message.id);
+            if (index > 0 && messages[index - 1].role === 'user') {
+                const userMessage = messages[index - 1];
+
+                // Remove all messages after and including the user message
+                const newMessages = messages.slice(0, index - 1);
+                setMessages(newMessages);
+
+                // Re-send the user message to get a new response
+                append({
+                    role: 'user',
+                    content: userMessage.content,
+                });
+            }
+        }
+    };
+
     return (
         <div
             className={cn(
@@ -74,6 +94,7 @@ export default function Chat({
                             setInput(query);
                         }}
                         chatId={id}
+                        onRetry={handleRetry}
                     />
                 </ScrollArea>
             )}

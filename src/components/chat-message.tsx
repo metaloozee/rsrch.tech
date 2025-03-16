@@ -25,7 +25,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { BrainIcon, SparklesIcon, UserCircleIcon } from 'lucide-react';
+import { BrainIcon, RotateCwIcon, SparklesIcon, UserCircleIcon } from 'lucide-react';
 import { CopyIcon, CheckIcon, CodeIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';

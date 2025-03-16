@@ -10,6 +10,7 @@ interface ChatMessageProps {
     onQuerySelect: (query: string) => void;
     isLoading: boolean;
     chatId?: string;
+    onRetry?: (message: Message) => void;
 }
 
 export function ChatMessages({
@@ -18,6 +19,7 @@ export function ChatMessages({
     onQuerySelect,
     isLoading,
     chatId,
+    onRetry,
 }: ChatMessageProps) {
     const messageEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -44,6 +46,7 @@ export function ChatMessages({
                     onOpenChange={() => {}}
                     onQuerySelect={onQuerySelect}
                     chatId={chatId}
+                    onRetry={onRetry ? () => onRetry(message) : undefined}
                 />
             ))}
 
