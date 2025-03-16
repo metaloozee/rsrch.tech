@@ -5,8 +5,8 @@ import { Message, useChat } from '@ai-sdk/react';
 import { cn } from '@/lib/utils';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
-import InputPanel from './chat-input';
-import { ChatMessages } from './chat-messages';
+import InputPanel, { ResponseMode } from './chat-input';
+import { ChatMessages } from '@/components/chat-messages';
 import { useMobileView } from '@/lib/hooks';
 
 export default function Chat({
@@ -17,7 +17,7 @@ export default function Chat({
     savedMessages?: Message[];
 }) {
     const isMobile = useMobileView();
-    const [deepResearch, setDeepResearch] = useState(false);
+    const [responseMode, setResponseMode] = useState<ResponseMode>('concise');
 
     const {
         messages,
@@ -35,7 +35,7 @@ export default function Chat({
         initialMessages: savedMessages,
         body: {
             id,
-            deepResearch,
+            responseMode,
         },
         onError: (error) => {
             console.error(error);
@@ -87,8 +87,8 @@ export default function Chat({
                 setMessages={setMessages}
                 stop={stop}
                 append={append}
-                deepResearch={deepResearch}
-                setDeepResearch={setDeepResearch}
+                responseMode={responseMode}
+                setResponseMode={setResponseMode}
             />
         </div>
     );

@@ -12,9 +12,17 @@ import {
     GlobeLock,
     ScanSearchIcon,
     StopCircleIcon,
+    FileText,
+    ZapIcon,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import { useMobileView } from '@/lib/hooks';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 interface InputPanelProps {
     input: string;
@@ -26,9 +34,35 @@ interface InputPanelProps {
     stop: () => void;
     append: (message: any) => void;
 
-    deepResearch: boolean;
-    setDeepResearch: (deepResearch: boolean) => void;
+    responseMode: ResponseMode;
+    setResponseMode: (responseMode: ResponseMode) => void;
 }
+
+export type ResponseMode = 'concise' | 'descriptive' | 'research';
+
+const responseModes = [
+    {
+        value: 'concise',
+        label: 'Concise',
+        description: 'Brief, direct responses',
+        icon: ZapIcon,
+        color: 'text-blue-500',
+    },
+    {
+        value: 'descriptive',
+        label: 'Descriptive',
+        description: 'Detailed explanations',
+        icon: FileText,
+        color: 'text-emerald-500',
+    },
+    {
+        value: 'research',
+        label: 'Research',
+        description: 'In-depth analysis with sources',
+        icon: BrainIcon,
+        color: 'text-amber-500',
+    },
+];
 
 export default function InputPanel({
     input,
@@ -40,8 +74,8 @@ export default function InputPanel({
     stop,
     append,
 
-    deepResearch,
-    setDeepResearch,
+    responseMode,
+    setResponseMode,
 }: InputPanelProps) {
     const isMobile = useMobileView();
 
@@ -153,23 +187,59 @@ export default function InputPanel({
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ delay: 0.2 }}
-                            onClick={() => setDeepResearch(!deepResearch)}
-                            className="cursor-pointer px-4 py-2 bg-neutral-800 rounded-md flex flex-row gap-2 justify-center items-center *:transition-all *:duration-300"
+                            className="cursor-pointer"
                         >
-                            <BrainIcon
-                                className={cn(
-                                    'size-4',
-                                    deepResearch ? 'text-amber-500' : 'text-neutral-500'
-                                )}
-                            />
-                            <p
-                                className={cn(
-                                    'text-xs',
-                                    deepResearch ? 'text-neutral-300' : 'text-neutral-500'
-                                )}
+                            <Select
+                                value={responseMode}
+                                onValueChange={(value: ResponseMode) => {
+                                    setResponseMode(value);
+                                }}
                             >
-                                Deep Research
-                            </p>
+                                <SelectTrigger className="cursor-pointer w-auto min-w-[120px] !bg-neutral-800/70 border-0 hover:!bg-neutral-800 hover:text-neutral-200 px-4 py-2 focus:ring-0 focus-visible:ring-0 rounded-md transition-all duration-300">
+                                    <div className="flex items-center gap-2">
+                                        {(() => {
+                                            const mode = responseModes.find(
+                                                (m) => m.value === responseMode
+                                            );
+                                            const Icon = mode?.icon as React.ElementType;
+                                            return <Icon className={cn('size-4', mode?.color)} />;
+                                        })()}
+                                        <span className="text-xs font-medium">
+                                            {responseModes.find((m) => m.value === responseMode)
+                                                ?.label || 'Concise'}
+                                        </span>
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent className="bg-neutral-900 border-accent text-neutral-100">
+                                    {responseModes.map((mode) => {
+                                        const Icon = mode.icon;
+                                        return (
+                                            <SelectItem
+                                                key={mode.value}
+                                                value={mode.value}
+                                                className="py-3 px-2 data-[highlighted]:bg-neutral-800 data-[highlighted]:text-neutral-200 cursor-pointer focus:outline-none"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <Icon
+                                                        className={cn(
+                                                            'h-4 w-4 flex-shrink-0',
+                                                            mode.color
+                                                        )}
+                                                    />
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-medium">
+                                                            {mode.label}
+                                                        </span>
+                                                        <span className="text-xs text-neutral-400">
+                                                            {mode.description}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </SelectItem>
+                                        );
+                                    })}
+                                </SelectContent>
+                            </Select>
                         </motion.div>
                         <motion.div
                             initial={{ opacity: 0 }}

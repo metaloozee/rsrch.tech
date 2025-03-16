@@ -6,6 +6,7 @@ import {
     smoothStream,
     streamText,
     tool,
+    Message,
 } from 'ai';
 
 import { env } from '@/lib/env';
@@ -13,6 +14,7 @@ import { mistral } from '@ai-sdk/mistral';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
 import { openrouter } from '@openrouter/ai-sdk-provider';
+import { ResponseMode } from '@/components/chat-input';
 
 export const maxDuration = 60;
 
@@ -27,8 +29,12 @@ export interface SearchResult {
 
 export async function POST(req: Request) {
     try {
-        const { messages, id } = await req.json();
-        if (!messages || !id) {
+        const {
+            messages,
+            id,
+            responseMode,
+        }: { messages: Message[]; id: string; responseMode: ResponseMode } = await req.json();
+        if (!messages || !id || !responseMode) {
             throw new Error('Invalid Body');
         }
 
@@ -174,7 +180,8 @@ You MUST execute this entire process through proper tool calls. NEVER skip tool 
                                 const searchPromises = search_queries.map(async (query, i) => {
                                     const res = await tvly.search(query, {
                                         maxResults: 2,
-                                        searchDepth: 'advanced',
+                                        searchDepth:
+                                            responseMode === 'concise' ? 'basic' : 'advanced',
                                         includeImages: true,
                                         includeAnswer: true,
                                     });
@@ -272,7 +279,10 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    model: mistral('mistral-large-latest'),
+                    model:
+                        responseMode === 'concise'
+                            ? mistral('mistral-small-latest')
+                            : mistral('mistral-large-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         ...(await res.response).messages,
@@ -285,7 +295,20 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 3: ', error);
                     },
-                    system: `
+                    system:
+                        responseMode === 'concise'
+                            ? `
+You are a high-level research assistant responsible for providing direct, concise, credible and precise information using the context from the previous steps (e.g., research planning, data retrieval).
+
+Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+Primary Goal:
+- Provide a clear, concise answer to the user's query.
+- Use only necessary context.
+- Avoid unnecessary structures or headings unless explicitly asked about it.
+- Deliver Straightforward and accurate responses.
+`
+                            : `
 You are a high-level research assistant responsible for providing comprehensive, credible, and precise information using the context from previous steps (e.g., research planning, data retrieval).
 
 Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
@@ -303,7 +326,7 @@ Response Structure:
 4. In subsequent interactions that are not search queries or feedback-related, engage in a natural, conversational tone.
 
 Your responses should be well-organized, technically insightful, and directly address the query.
-                    `,
+`,
                 });
 
                 responseResult.consumeStream();
