@@ -1,4 +1,5 @@
 import './globals.css';
+import 'katex/dist/katex.min.css';
 
 import type { Metadata } from 'next';
 
@@ -11,7 +12,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-    title: 'Mistral Research',
+    title: 'rsrch',
 };
 
 export default function RootLayout({

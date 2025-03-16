@@ -125,10 +125,11 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                 {...props}
                 style={oneDark}
                 wrapLongLines
+                wrapLine
                 showLineNumbers
                 language={match[1]}
                 PreTag="div"
-                className="!rounded-t-none !rounded-b-lg !m-0 !bg-neutral-900 border !text-sm"
+                className="!rounded-t-none !rounded-b-lg !m-0 !bg-neutral-900 border !text-sm max-w-2xl overflow-scroll"
             >
                 {String(children).replace(/\n$/, '')}
             </SyntaxHighlighter>
@@ -190,8 +191,20 @@ const markdownComponents = {
     strong: ({ children }: any) => <strong className="font-bold text-white">{children}</strong>,
     em: ({ children }: any) => <em className="italic text-neutral-100">{children}</em>,
     hr: () => <Separator className="my-6" />,
-    inlineMath: ({ value }: { value: string }) => <span className="math math-inline">{value}</span>,
-    math: ({ value }: { value: string }) => <div className="math math-display my-4">{value}</div>,
+    inlineMath: ({ value }: { value: string }) => (
+        <span
+            suppressHydrationWarning
+            className="math math-inline"
+            dangerouslySetInnerHTML={{ __html: value }}
+        />
+    ),
+    math: ({ value }: { value: string }) => (
+        <div
+            suppressHydrationWarning
+            className="math math-display my-4"
+            dangerouslySetInnerHTML={{ __html: value }}
+        />
+    ),
 };
 
 interface BotMessageProps {
@@ -200,8 +213,6 @@ interface BotMessageProps {
 }
 
 export function BotMessage({ message, className }: BotMessageProps) {
-    // const cleanedMessage = removeContemplateContent(message || '');
-    const containsLaTeX = /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/.test(message);
     const processedData = preprocessLaTeX(message);
 
     if (processedData.length <= 1) {
@@ -222,41 +233,13 @@ export function BotMessage({ message, className }: BotMessageProps) {
         ),
     };
 
-    if (containsLaTeX) {
-        return (
-            <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 10 }}
-                className="w-full flex flex-col justify-start items-start"
-            >
-                <div className="my-2 flex flex-row justify-start items-center gap-2">
-                    <SparklesIcon className="size-4" />
-                    <p className="text-sm">Answer</p>
-                </div>
-
-                <MemoizedReactMarkdown
-                    {...commonProps}
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[
-                        [rehypeExternalLinks, { target: '_blank' }],
-                        rehypeRaw,
-                        rehypeKatex,
-                    ]}
-                    components={markdownComponents}
-                >
-                    {processedData}
-                </MemoizedReactMarkdown>
-            </motion.div>
-        );
-    }
-
     return (
         <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: 'spring', stiffness: 400, damping: 10 }}
             className="w-full flex flex-col justify-start items-start"
+            suppressHydrationWarning
         >
             <div className="my-2 flex flex-row justify-start items-center gap-2">
                 <SparklesIcon className="size-4" />
@@ -266,8 +249,12 @@ export function BotMessage({ message, className }: BotMessageProps) {
             <MemoizedReactMarkdown
                 {...commonProps}
                 components={markdownComponents}
-                rehypePlugins={[[rehypeExternalLinks, { target: '_blank' }], rehypeRaw]}
-                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[
+                    [rehypeExternalLinks, { target: '_blank' }],
+                    rehypeRaw,
+                    rehypeKatex,
+                ]}
+                remarkPlugins={[remarkGfm, remarkMath]}
             >
                 {processedData}
             </MemoizedReactMarkdown>

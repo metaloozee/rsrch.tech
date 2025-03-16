@@ -279,10 +279,7 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    model:
-                        responseMode === 'concise'
-                            ? mistral('mistral-small-latest')
-                            : mistral('mistral-large-latest'),
+                    model: mistral('mistral-large-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         ...(await res.response).messages,
