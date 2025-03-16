@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# rsrch.tech
+
+![image](./public/screenshot.jpeg)
+
+rsrch.tech is an open-source alternative to Perplexity, designed to provide AI-powered research assistance using Mistral AI for language processing and Tavily for web search functionality.
+
+## Introduction
+
+This application combines the power of large language models with web search capabilities to help users conduct research efficiently. Built with Next.js and React, rsrch.tech aims to deliver comprehensive, accurate, and well-sourced information in response to user queries.
+
+## TODO
+
+This project is under active development. Below are some of the planned improvements:
+
+- [ ] Add citation management and export feature
+- [ ] Improve mobile responsiveness
+- [ ] Improve Concise responses
+
+## Tech Stack
+
+- **Framework**: [Next.js 15](https://nextjs.org/)
+
+- **AI Processing**:
+    - [Mistral AI](https://mistral.ai/) (mistral-small-latest and mistral-large-latest)
+    - [AI SDK](https://www.ai-sdk.dev/) for React integration
+- **Search Engine**: [Tavily API](https://tavily.com/) for web search functionality
 
 ## Getting Started
 
-First, run the development server:
+First, set up your environment variables:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. Create a `.env.local` file with the following variables:
+
+```
+MISTRAL_API_KEY=your_mistral_api_key
+TAVILY_API_KEY=your_tavily_api_key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Run the development server:
+
+```bash
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
+
+## How It Works
+
+1. **Query Processing**: User queries are analyzed to extract research goals
+2. **Web Search**: The system performs targeted web searches based on the extracted goals
+3. **Response Generation**: Search results are synthesized into comprehensive, properly cited responses
+4. **Customization**: Users can select between concise and detailed response modes
 
 ## Learn More
 
-To learn more about Next.js, take a look at the following resources:
+To learn more about the technologies used in this project:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Mistral AI Documentation](https://docs.mistral.ai/)
+- [Tavily API Documentation](https://docs.tavily.com/)
+- [AI SDK Documentation](https://www.ai-sdk.dev/docs)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Contributing
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Contributions are welcome! Please feel free to submit a Pull Request.
