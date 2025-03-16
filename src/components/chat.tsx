@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Message, useChat } from '@ai-sdk/react';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +17,7 @@ export default function Chat({
     savedMessages?: Message[];
 }) {
     const isMobile = useMobileView();
+    const [deepResearch, setDeepResearch] = useState(false);
 
     const {
         messages,
@@ -34,6 +35,7 @@ export default function Chat({
         initialMessages: savedMessages,
         body: {
             id,
+            deepResearch,
         },
         onError: (error) => {
             console.error(error);
@@ -85,6 +87,8 @@ export default function Chat({
                 setMessages={setMessages}
                 stop={stop}
                 append={append}
+                deepResearch={deepResearch}
+                setDeepResearch={setDeepResearch}
             />
         </div>
     );
