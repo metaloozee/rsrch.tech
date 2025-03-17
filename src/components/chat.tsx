@@ -85,7 +85,7 @@ export default function Chat({
             )}
         >
             {messages.length > 0 && (
-                <ScrollArea className="w-full flex-grow">
+                <ScrollArea className="w-full h-[calc(100vh-180px)] flex-grow overflow-y-auto">
                     <ChatMessages
                         messages={messages}
                         isLoading={isLoading}

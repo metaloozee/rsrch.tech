@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import rehypeExternalLinks from 'rehype-external-links';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -24,17 +24,31 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { BrainIcon, RotateCwIcon, SparklesIcon, UserCircleIcon } from 'lucide-react';
+import { ArrowUpRightIcon, SparklesIcon } from 'lucide-react';
 import { CopyIcon, CheckIcon, CodeIcon } from 'lucide-react';
-import { Button } from './ui/button';
-import { Separator } from './ui/separator';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 
 const extractDomain = (url: string): string => {
     try {
         const urlObj = new URL(url);
         return urlObj.hostname;
     } catch {
+        return url;
+    }
+};
+
+const formatCitationUrl = (url: string): string => {
+    try {
+        if (url.match(/^https?:\/\//i)) {
+            return url;
+        }
+
+        return `https://${url.replace(/^\/\//, '')}`;
+    } catch (error) {
+        console.error('Error formatting citation URL:', error);
         return url;
     }
 };
@@ -74,7 +88,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                     <Button
                         variant="ghost"
                         size={'icon'}
-                        className="transition-all duration-200 relative overflow-hidden"
+                        className="transition-all duration-200"
                         onClick={handleCopy}
                         title={isCopied ? 'Copied!' : 'Copy code'}
                     >
@@ -179,15 +193,6 @@ const markdownComponents = {
             {children}
         </blockquote>
     ),
-    a: ({ children, href }: any) => (
-        <Link
-            href={href}
-            target="_blank"
-            className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
-        >
-            {children || (href ? extractDomain(href) : '')}
-        </Link>
-    ),
     strong: ({ children }: any) => <strong className="font-bold text-white">{children}</strong>,
     em: ({ children }: any) => <em className="italic text-neutral-100">{children}</em>,
     hr: () => <Separator className="my-6" />,
@@ -199,13 +204,43 @@ const markdownComponents = {
         />
     ),
     math: ({ value }: { value: string }) => (
-        <div
+        <span
             suppressHydrationWarning
-            className="math math-display my-4"
+            className="math math-display block my-4"
             dangerouslySetInnerHTML={{ __html: value }}
         />
     ),
 };
+
+// Function to track citation numbers within a message
+const useCitationCounter = () => {
+    const citationMap = useRef(new Map<string, number>());
+    const nextCitationNumber = useRef(1);
+
+    const getCitationNumber = (href: string) => {
+        const normalizedUrl = normalizeUrl(href);
+        if (!citationMap.current.has(normalizedUrl)) {
+            citationMap.current.set(normalizedUrl, nextCitationNumber.current++);
+        }
+        return citationMap.current.get(normalizedUrl) || 0;
+    };
+
+    return { getCitationNumber };
+};
+
+// Function to normalize URLs for deduplication
+function normalizeUrl(url: string): string {
+    try {
+        return url
+            .trim()
+            .toLowerCase()
+            .replace(/\/$/, '')
+            .replace(/^https?:\/\//, '')
+            .replace(/^www\./, '');
+    } catch {
+        return url;
+    }
+}
 
 interface BotMessageProps {
     message: string;
@@ -214,6 +249,7 @@ interface BotMessageProps {
 
 export function BotMessage({ message, className }: BotMessageProps) {
     const processedData = preprocessLaTeX(message);
+    const { getCitationNumber } = useCitationCounter();
 
     if (processedData.length <= 1) {
         return null;
@@ -233,6 +269,74 @@ export function BotMessage({ message, className }: BotMessageProps) {
         ),
     };
 
+    // Custom markdown components including citation handling
+    const customMarkdownComponents = {
+        ...markdownComponents,
+        a: ({ children, href }: any) => {
+            if (!href) return <span>{children}</span>;
+
+            // Is this a citation link?
+            const isCitation =
+                typeof children === 'string' &&
+                children.trim() !== '' &&
+                !href?.startsWith('#') &&
+                !href?.startsWith('mailto:') &&
+                !(children === href || extractDomain(href) === children);
+
+            if (isCitation) {
+                const citationNumber = getCitationNumber(href);
+
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <sup>
+                                    <Badge
+                                        variant={'secondary'}
+                                        className="text-xs font-semibold cursor-help ml-0.5 hover:underline transition-colors"
+                                        aria-label={`Citation ${citationNumber}: ${children}`}
+                                    >
+                                        {citationNumber}
+                                    </Badge>
+                                </sup>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[300px] p-3">
+                                <div className="flex flex-col gap-2">
+                                    <p className="font-medium text-sm">{children || 'Source'}</p>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs truncate mr-2">
+                                            {extractDomain(formatCitationUrl(href))}
+                                        </p>
+                                        <Link
+                                            href={formatCitationUrl(href)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs hover:underline inline-flex items-center gap-1"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            Visit source
+                                            <ArrowUpRightIcon className="size-2" />
+                                        </Link>
+                                    </div>
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            }
+
+            return (
+                <Link
+                    href={href}
+                    target="_blank"
+                    className="underline underline-offset-2 transition-colors"
+                >
+                    {children || (href ? extractDomain(href) : '')}
+                </Link>
+            );
+        },
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -248,7 +352,7 @@ export function BotMessage({ message, className }: BotMessageProps) {
 
             <MemoizedReactMarkdown
                 {...commonProps}
-                components={markdownComponents}
+                components={customMarkdownComponents}
                 rehypePlugins={[
                     [rehypeExternalLinks, { target: '_blank' }],
                     rehypeRaw,
@@ -267,11 +371,17 @@ const preprocessLaTeX = (content: string) => {
         /\\\[([\s\S]*?)\\\]/g,
         (_, equation) => `$$${equation}$$`
     );
+
     const inlineProcessedContent = blockProcessedContent.replace(
         /\\\(([\s\S]*?)\\\)/g,
         (_, equation) => `$${equation}$`
     );
-    return inlineProcessedContent;
+
+    const processedParagraphs = inlineProcessedContent.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+        return `\n\n${match}\n\n`;
+    });
+
+    return processedParagraphs;
 };
 
 export const UserMessage: React.FC<{ message: string }> = ({ message }) => {
