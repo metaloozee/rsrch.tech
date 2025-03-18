@@ -59,7 +59,7 @@ export async function POST(req: Request) {
                                             analysis: z.string(),
                                         })
                                     )
-                                    .max(3),
+                                    .max(responseMode === 'concise' ? 1 : 3),
                             }),
                             execute: async ({ goals }, { toolCallId }) => {
                                 dataStream.writeMessageAnnotation({
@@ -122,13 +122,11 @@ Follow these steps carefully:
                     .toLocaleString();
 
                 const toolResult = await streamText({
-                    model: mistral('mistral-large-latest'),
+                    model: mistral('mistral-small-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         ...(await res.response).messages,
                     ],
-                    toolChoice: 'required',
-                    maxSteps: parseInt(goalCount),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 2: ', error);
                     },
@@ -295,23 +293,27 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                     system:
                         responseMode === 'concise'
                             ? `
-You are a high-level research assistant responsible for providing direct, concise, credible and precise information using the context from the previous steps (e.g., research planning, data retrieval).
+You are a high-level research assistant responsible for providing extremely concise, credible and precise information using the context from the previous steps (e.g., research planning, data retrieval).
 
 Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
+CRITICAL INSTRUCTION - LIMIT YOUR RESPONSE TO 3-5 SENTENCES MAXIMUM
+
 Primary Goal:
-- Provide a clear, concise answer to the user's query.
-- Use only necessary context.
-- Avoid unnecessary structures or headings unless explicitly asked about it.
-- Deliver Straightforward and accurate responses.
-- When providing factual information, include citations in the format [Source Title](URL).
+- Provide the shortest possible clear answer to the user's query (3-5 sentences total).
+- NEVER use headings, bullet points, or any structured formatting.
+- Prioritize brevity over comprehensiveness - include only essential information.
+- Use simple language and short sentences.
+- When providing factual information, ALWAYS include citations in the format [Source Title](URL).
+- Respond based on the context only.
 
 Citation Instructions:
-- Format citations as [Source Title](URL) directly after each sentence or paragraph containing factual information.
-- Keep source titles concise and relevant.
+- Format citations as [Source Title](URL) directly after each sentence containing factual information.
+- Keep source titles as short as possible.
 - Use the exact URL from search results.
 - Do not create a separate citation section.
-- Citations should be placed immediately after the relevant statement, e.g., "This is a fact [Source Title](URL)."
+
+Remember: Your entire response should be extremely brief (3-5 sentences) - this is not optional.
 `
                             : `
 You are a high-level research assistant responsible for providing comprehensive, credible, and precise information using the context from previous steps (e.g., research planning, data retrieval).
@@ -323,6 +325,7 @@ Primary Goals:
 - Deliver responses that are accurate, detailed, and structured.
 - Avoid fabrications by sticking to provided context and including proper citations.
 - Follow all formatting rules without exception.
+- When providing factual information, include citations in the format [Source Title](URL).
 
 Response Structure:
 1. Start with a clear and direct answer to the question.
