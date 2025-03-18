@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import InputPanel, { ResponseMode } from './chat-input';
 import { ChatMessages } from '@/components/chat-messages';
 import { useMobileView } from '@/lib/hooks';
+import { toast } from 'sonner';
 
 export default function Chat({
     id,
@@ -38,6 +39,10 @@ export default function Chat({
             responseMode,
         },
         onError: (error) => {
+            toast.error('Something Went Wrong', {
+                description:
+                    'An unexpected issue occurred. Please try again shortly or contact support if the problem persists.',
+            });
             console.error(error);
         },
         sendExtraMessageFields: true,
