@@ -151,6 +151,13 @@ Steps:
 5. Synthesize the data into coherent answers for each research goal, noting any gaps or inconsistencies.
 6. If the research gaps are too large or if responses stray from the goals, refine your queries and repeat tool execution.
 
+Available Tools:
+1. \`web_search\`
+    * Performs a web search to retrieve information from the internet.
+    * You MUST call this tool once per research goal.
+    * Parameters:
+        - \`search_queries\`: Array of search queries
+
 You MUST execute this entire process through proper tool calls. NEVER skip tool execution.
                     `,
                     tools: {
@@ -158,7 +165,9 @@ You MUST execute this entire process through proper tool calls. NEVER skip tool 
                             description:
                                 'REQUIRED tool that must be called to perform internet searches. You MUST wait for the results of this tool before responding.',
                             parameters: z.object({
-                                search_queries: z.array(z.string()).max(5),
+                                search_queries: z
+                                    .array(z.string())
+                                    .max(responseMode === 'concise' ? 2 : 10),
                             }),
                             execute: async ({ search_queries }, { toolCallId }) => {
                                 dataStream.writeMessageAnnotation({

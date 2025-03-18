@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { GlobeIcon, LoaderCircleIcon, SearchIcon, ListIcon } from 'lucide-react';
 import { TextShimmer } from './motion-primitives/text-shimmer';
 import { Separator } from '@/components/ui/separator';
@@ -117,6 +117,18 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
         0
     );
 
+    const allDomains = results
+        .flatMap((res: any) => res?.result?.results || [])
+        .filter(Boolean)
+        .map((r: any) => {
+            try {
+                return new URL(r?.url || '#').hostname.replace('www.', '');
+            } catch {
+                return 'unknown';
+            }
+        })
+        .filter((domain: string, index: number, self: string[]) => self.indexOf(domain) === index);
+
     return (
         <Accordion className={cn('w-full !no-underline', className)}>
             <AccordionItem value="results" className="border-none">
@@ -125,74 +137,131 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                         <ToolHeader
                             icon={<GlobeIcon className="size-3" />}
                             title="Web Search"
-                            meta={<>{sourceCount} Sources</>}
+                            meta={
+                                <div className="flex gap-1 items-center">
+                                    <span className="text-xs">{sourceCount}</span>
+                                    <span className="text-xs opacity-70">
+                                        {sourceCount === 1 ? 'source' : 'sources'}
+                                    </span>
+                                </div>
+                            }
                         />
                     </div>
                 </AccordionTrigger>
                 <AccordionContent>
                     <div className="flex w-full flex-col gap-4 justify-center items-center pt-4">
                         <Separator className="w-full" />
-                        <div className="flex flex-wrap w-full gap-x-6 gap-y-3 justify-start items-center">
-                            {results.map((res: any, index: number) => (
-                                <div key={index} className="flex justify-center items-center gap-2">
-                                    <SearchIcon className="size-3" />
-                                    {res?.query || 'Unknown query'}
-                                </div>
-                            ))}
-                        </div>
 
-                        <div className="flex flex-wrap w-full gap-2 justify-start items-center">
-                            {(() => {
-                                const allResults = results
-                                    .flatMap((res: any) => res?.result?.results || [])
-                                    .filter(Boolean);
-
-                                const displayResults = allResults.slice(0, 4);
-                                const remainingCount = Math.max(0, allResults.length - 4);
-
-                                return (
-                                    <>
-                                        {displayResults.map((r: any, idx: number) => {
-                                            const url = r?.url || '#';
-                                            let domain = '';
-                                            try {
-                                                domain = new URL(url).hostname.replace('www.', '');
-                                            } catch {
-                                                domain = 'unknown';
-                                            }
-
-                                            return (
-                                                <Link
-                                                    target="_blank"
-                                                    href={url}
-                                                    key={idx}
-                                                    className="max-w-xs truncate py-1 px-2 rounded-md border bg-neutral-800"
-                                                >
-                                                    {domain}
-                                                </Link>
-                                            );
-                                        })}
-                                        {remainingCount > 0 && (
-                                            <span className="py-1 px-2 rounded-md border bg-neutral-800">
-                                                + {remainingCount} sources
+                        {results.length > 0 && (
+                            <div className="w-full">
+                                <div className="text-xs font-medium mb-2">Search Queries</div>
+                                <div className="flex flex-wrap w-full gap-x-3 gap-y-2 justify-start items-center">
+                                    {results.map((res: any, index: number) => (
+                                        <div
+                                            key={index}
+                                            className="flex justify-center items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
+                                        >
+                                            <SearchIcon className="size-3 text-neutral-400" />
+                                            <span className="text-xs">
+                                                {res?.query || 'Unknown query'}
                                             </span>
-                                        )}
-                                    </>
-                                );
-                            })()}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="w-full">
+                            <div className="text-xs font-medium mb-2">Sources</div>
+                            <div className="flex flex-wrap w-full gap-2 justify-start items-center">
+                                {allDomains.map((domain: string, idx: number) => {
+                                    // Find a URL for this domain
+                                    const sourceItem = results
+                                        .flatMap((res: any) => res?.result?.results || [])
+                                        .find((r: any) => {
+                                            try {
+                                                return (
+                                                    new URL(r?.url || '#').hostname.replace(
+                                                        'www.',
+                                                        ''
+                                                    ) === domain
+                                                );
+                                            } catch {
+                                                return false;
+                                            }
+                                        });
+
+                                    const url = sourceItem?.url || '#';
+
+                                    const domainCount = results
+                                        .flatMap((res: any) => res?.result?.results || [])
+                                        .filter((r: any) => {
+                                            try {
+                                                return (
+                                                    new URL(r?.url || '#').hostname.replace(
+                                                        'www.',
+                                                        ''
+                                                    ) === domain
+                                                );
+                                            } catch {
+                                                return false;
+                                            }
+                                        }).length;
+
+                                    return (
+                                        <Link
+                                            target="_blank"
+                                            href={url}
+                                            key={idx}
+                                            className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                                        >
+                                            <span className="text-xs font-medium">{domain}</span>
+                                            {domainCount > 1 && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700">
+                                                    {domainCount}
+                                                </span>
+                                            )}
+                                        </Link>
+                                    );
+                                })}
+
+                                {sourceCount > allDomains.length && (
+                                    <span className="py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 text-xs">
+                                        + {sourceCount - allDomains.length} more
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="flex flex-wrap w-full gap-3 justify-start items-center mt-2">
-                            {(() => {
-                                const allImages = results
-                                    .flatMap((res: any) => res?.result?.images || [])
-                                    .filter(Boolean);
+                        {(() => {
+                            const allImages = results
+                                .flatMap((res: any) => res?.result?.images || [])
+                                .filter(Boolean);
 
-                                const displayImages = allImages.slice(0, 6);
-                                const remainingCount = Math.max(0, allImages.length - 6);
+                            if (allImages.length === 0) return null;
 
-                                return (
-                                    <>
+                            const [availableImages, setAvailableImages] = useState<{
+                                [key: string]: boolean;
+                            }>({});
+
+                            const displayImages = allImages
+                                .slice(0, 6)
+                                .filter((img: any) => availableImages[img?.url] !== false);
+
+                            const remainingCount = Math.max(
+                                0,
+                                allImages.length -
+                                    (Object.values(availableImages).filter((v) => v === false)
+                                        .length +
+                                        displayImages.length)
+                            );
+
+                            if (displayImages.length === 0 && remainingCount === 0) return null;
+
+                            return (
+                                <div className="w-full">
+                                    <div className="text-xs font-medium mb-2">Images</div>
+                                    <div className="flex flex-wrap w-full gap-3 justify-start items-center">
                                         {displayImages.map((img: any, idx: number) => {
                                             const imageUrl = img?.url || '#';
                                             const sourceUrl = img?.source_url || imageUrl;
@@ -202,26 +271,43 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                                                     target="_blank"
                                                     href={sourceUrl}
                                                     key={idx}
-                                                    className="relative w-36 aspect-[16/9] overflow-hidden rounded-md border bg-neutral-800 hover:opacity-90 transition-opacity"
+                                                    className="relative w-36 aspect-[16/9] overflow-hidden rounded-md border border-neutral-700 bg-neutral-800 hover:opacity-90 transition-opacity group"
                                                 >
                                                     <img
                                                         src={imageUrl}
                                                         alt={img?.alt_text || 'Search result image'}
                                                         className="absolute top-0 left-0 h-full w-full object-cover"
                                                         loading="lazy"
+                                                        onError={() => {
+                                                            setAvailableImages((prev) => ({
+                                                                ...prev,
+                                                                [imageUrl]: false,
+                                                            }));
+                                                        }}
+                                                        onLoad={() => {
+                                                            setAvailableImages((prev) => ({
+                                                                ...prev,
+                                                                [imageUrl]: true,
+                                                            }));
+                                                        }}
                                                     />
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end">
+                                                        <div className="p-2 text-[10px] truncate w-full">
+                                                            {img?.alt_text || 'View image'}
+                                                        </div>
+                                                    </div>
                                                 </Link>
                                             );
                                         })}
                                         {remainingCount > 0 && (
-                                            <span className="py-1 px-2 rounded-md border bg-neutral-800">
-                                                + {remainingCount} images
+                                            <span className="py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 text-xs">
+                                                + {remainingCount} more
                                             </span>
                                         )}
-                                    </>
-                                );
-                            })()}
-                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </AccordionContent>
             </AccordionItem>
