@@ -39,6 +39,7 @@
         "motion": "^12.4.10",
         "next": "15.2.1",
         "next-themes": "^0.4.4",
+        "posthog-js": "^1.231.2",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "react-markdown": "^9.1.0",

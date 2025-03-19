@@ -100,14 +100,6 @@ export default function InputPanel({
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.2 }}
-            className={cn(
-                'mx-auto w-full',
-                isMobile
-                    ? 'bottom-0 left-0 right-0'
-                    : messages.length > 0
-                      ? 'bottom-0 left-0 right-0'
-                      : 'flex flex-col items-center justify-center'
-            )}
         >
             {messages.length === 0 &&
                 (isMobile ? (

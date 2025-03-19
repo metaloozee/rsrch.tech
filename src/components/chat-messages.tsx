@@ -11,7 +11,6 @@ interface ChatMessageProps {
     isLoading: boolean;
     chatId?: string;
     onRetry?: (message: Message) => void;
-    messageEndRef?: React.RefObject<HTMLDivElement>;
 }
 
 export function ChatMessages({
@@ -21,14 +20,13 @@ export function ChatMessages({
     isLoading,
     chatId,
     onRetry,
-    messageEndRef,
 }: ChatMessageProps) {
     if (!messages.length) return null;
 
     const showLoading = isLoading && messages[messages.length - 1].role === 'user';
 
     return (
-        <div className="px-6 mb-10 w-full mt-10 mx-auto max-w-3xl">
+        <div className="px-6 w-full mt-10 mx-auto max-w-3xl">
             {messages.map((message) => (
                 <RenderMessage
                     key={message.id}
@@ -50,6 +48,8 @@ export function ChatMessages({
                     </div>
                 </div>
             )}
+
+            <div className="shrink-0 min-w-[24px] min-h-[24px]" />
         </div>
     );
 }

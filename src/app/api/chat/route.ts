@@ -122,7 +122,7 @@ Follow these steps carefully:
                     .toLocaleString();
 
                 const toolResult = await streamText({
-                    model: mistral('mistral-small-latest'),
+                    model: mistral('mistral-large-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         ...(await res.response).messages,

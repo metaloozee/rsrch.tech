@@ -173,7 +173,7 @@ export const RenderMessage = memo(function RenderMessage({
                         />
                     ))}
 
-                    {webSearchTools.length > 2 ? (
+                    {webSearchTools.length > 1 ? (
                         <div className="p-4 !w-full bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs">
                             {allWebSearchToolsComplete ? (
                                 <Accordion className="w-full !no-underline">
