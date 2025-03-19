@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Message, useChat } from '@ai-sdk/react';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +9,8 @@ import InputPanel, { ResponseMode } from './chat-input';
 import { ChatMessages } from '@/components/chat-messages';
 import { useMobileView } from '@/lib/hooks';
 import { toast } from 'sonner';
+import { ScrollToBottomButton } from './scroll-to-bottom';
+import * as React from 'react';
 
 export default function Chat({
     id,
@@ -17,6 +19,10 @@ export default function Chat({
     id: string;
     savedMessages?: Message[];
 }) {
+    const messageEndRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [showScrollButton, setShowScrollButton] = useState(false);
+
     const isMobile = useMobileView();
     const [responseMode, setResponseMode] = useState<ResponseMode>('concise');
 
@@ -49,6 +55,12 @@ export default function Chat({
     });
 
     useEffect(() => {
+        if (messages.length > 0 && !showScrollButton) {
+            scrollToBottom();
+        }
+    }, [messages, showScrollButton]);
+
+    useEffect(() => {
         setMessages(savedMessages);
     }, [id]);
 
@@ -78,6 +90,19 @@ export default function Chat({
         }
     };
 
+    const handleScroll = () => {
+        if (!containerRef.current) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 0;
+        console.log('isNearBottom', isNearBottom);
+        setShowScrollButton(!isNearBottom);
+    };
+
+    const scrollToBottom = () => {
+        messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
     return (
         <div
             className={cn(
@@ -90,7 +115,11 @@ export default function Chat({
             )}
         >
             {messages.length > 0 && (
-                <ScrollArea className="w-full h-[calc(100vh-180px)] flex-grow overflow-y-auto">
+                <ScrollArea
+                    onScroll={handleScroll}
+                    ref={containerRef}
+                    className="w-full flex-grow overflow-y-auto"
+                >
                     <ChatMessages
                         messages={messages}
                         isLoading={isLoading}
@@ -101,8 +130,11 @@ export default function Chat({
                         chatId={id}
                         onRetry={handleRetry}
                     />
+                    <div ref={messageEndRef} />
                 </ScrollArea>
             )}
+
+            {/* <ScrollToBottomButton show={showScrollButton} onClick={scrollToBottom} /> */}
 
             <InputPanel
                 input={input}

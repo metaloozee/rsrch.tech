@@ -11,6 +11,7 @@ interface ChatMessageProps {
     isLoading: boolean;
     chatId?: string;
     onRetry?: (message: Message) => void;
+    messageEndRef?: React.RefObject<HTMLDivElement>;
 }
 
 export function ChatMessages({
@@ -20,17 +21,8 @@ export function ChatMessages({
     isLoading,
     chatId,
     onRetry,
+    messageEndRef,
 }: ChatMessageProps) {
-    const messageEndRef = React.useRef<HTMLDivElement>(null);
-
-    const scrollToBottom = () => {
-        messageEndRef.current?.scrollIntoView({ behavior: 'instant' });
-    };
-
-    React.useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
     if (!messages.length) return null;
 
     const showLoading = isLoading && messages[messages.length - 1].role === 'user';
@@ -58,7 +50,6 @@ export function ChatMessages({
                     </div>
                 </div>
             )}
-            <div ref={messageEndRef} />
         </div>
     );
 }
