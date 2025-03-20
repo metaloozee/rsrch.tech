@@ -6,6 +6,7 @@ import type { Metadata } from 'next';
 import { Geist } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { PostHogProvider } from '@/app/providers';
+import { ReactScan } from '@/components/react-scan';
 
 const geistSans = Geist({
     subsets: ['latin'],
@@ -25,6 +26,7 @@ export default function RootLayout({
             <body
                 className={`${geistSans.className} antialiased h-screen w-full bg-neutral-950 dark`}
             >
+                <ReactScan />
                 <PostHogProvider>
                     {children}
                     <Toaster position="top-center" />

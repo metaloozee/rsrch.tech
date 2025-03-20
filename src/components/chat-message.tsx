@@ -12,8 +12,8 @@ import { atomDark, oneDark } from 'react-syntax-highlighter/dist/cjs/styles/pris
 
 import { MemoizedReactMarkdown } from '@/components/markdown';
 import Link from 'next/link';
-
 import { motion, AnimatePresence } from 'motion/react';
+
 import { cn } from '@/lib/utils';
 
 import {
@@ -51,6 +51,11 @@ const formatCitationUrl = (url: string): string => {
         console.error('Error formatting citation URL:', error);
         return url;
     }
+};
+
+const getFaviconUrl = (domain: string): string => {
+    // Using Google's favicon service
+    return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
 };
 
 const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
@@ -143,7 +148,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                 showLineNumbers
                 language={match[1]}
                 PreTag="div"
-                className="!rounded-t-none !rounded-b-lg !m-0 !bg-neutral-900 border !text-sm max-w-2xl overflow-scroll"
+                className="!rounded-t-none !rounded-b-lg !m-0 !bg-neutral-900 border !text-sm overflow-scroll"
             >
                 {String(children).replace(/\n$/, '')}
             </SyntaxHighlighter>
@@ -269,13 +274,11 @@ export function BotMessage({ message, className }: BotMessageProps) {
         ),
     };
 
-    // Custom markdown components including citation handling
     const customMarkdownComponents = {
         ...markdownComponents,
         a: ({ children, href }: any) => {
             if (!href) return <span>{children}</span>;
 
-            // Is this a citation link?
             const isCitation =
                 typeof children === 'string' &&
                 children.trim() !== '' &&
@@ -292,31 +295,41 @@ export function BotMessage({ message, className }: BotMessageProps) {
                             <TooltipTrigger asChild>
                                 <sup>
                                     <Badge
+                                        asChild
                                         variant={'secondary'}
-                                        className="text-xs font-semibold cursor-help ml-0.5 hover:underline transition-colors"
+                                        className="text-xs font-semibold cursor-pointer ml-0.5 hover:underline transition-colors"
                                         aria-label={`Citation ${citationNumber}: ${children}`}
                                     >
-                                        {citationNumber}
+                                        <Link
+                                            href={formatCitationUrl(href)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {citationNumber}
+                                        </Link>
                                     </Badge>
                                 </sup>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-[300px] p-3">
                                 <div className="flex flex-col gap-2">
                                     <p className="font-medium text-sm">{children || 'Source'}</p>
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-xs truncate mr-2">
+                                    <div className="flex items-center">
+                                        <img
+                                            src={getFaviconUrl(
+                                                extractDomain(formatCitationUrl(href))
+                                            )}
+                                            alt="Site icon"
+                                            width={16}
+                                            height={16}
+                                            className="mr-2 min-w-[16px]"
+                                            onError={(e) => {
+                                                e.currentTarget.style.display = 'none';
+                                            }}
+                                        />
+                                        <p className="text-xs truncate">
                                             {extractDomain(formatCitationUrl(href))}
                                         </p>
-                                        <Link
-                                            href={formatCitationUrl(href)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-xs hover:underline inline-flex items-center gap-1"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            Visit source
-                                            <ArrowUpRightIcon className="size-2" />
-                                        </Link>
                                     </div>
                                 </div>
                             </TooltipContent>

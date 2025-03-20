@@ -122,7 +122,7 @@ Follow these steps carefully:
                     .toLocaleString();
 
                 const toolResult = await streamText({
-                    model: mistral('mistral-large-latest'),
+                    model: mistral('mistral-small-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         ...(await res.response).messages,
@@ -138,8 +138,7 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
 CRITICAL INSTRUCTION:
 - You MUST use the web_search tool to fetch information relevant to the research goals.
 - NEVER respond without calling the web_search tool.
-- DO NOT hallucinate search results.
-- For EACH research goal, you MUST use the web_search tool at least once.
+- For EACH research goal, you MUST have relevant information fetched, if not then you can re-run the tools.
 - You can make multiple tool calls as needed, but each must be purposeful.
 - ALWAYS run and review tool outputs before writing your final synthesis.
 

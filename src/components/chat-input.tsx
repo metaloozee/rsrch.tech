@@ -14,6 +14,7 @@ import {
     StopCircleIcon,
     FileText,
     ZapIcon,
+    ArrowUpIcon,
 } from 'lucide-react';
 import { useMobileView } from '@/lib/hooks';
 import {
@@ -242,7 +243,7 @@ export default function InputPanel({
                             <AnimatePresence>
                                 {isLoading ? (
                                     <Button
-                                        size={'sm'}
+                                        size={'icon'}
                                         variant={'destructive'}
                                         onClick={stop}
                                         disabled={!isLoading}
@@ -258,13 +259,12 @@ export default function InputPanel({
                                                 damping: 10,
                                             }}
                                         >
-                                            <StopCircleIcon />
+                                            <StopCircleIcon className="animate-pulse" />
                                         </motion.div>
                                     </Button>
                                 ) : (
                                     <Button
-                                        className="px-4"
-                                        size={'sm'}
+                                        size={'icon'}
                                         type="submit"
                                         disabled={!input || isLoading}
                                         variant={input ? 'default' : 'secondary'}
@@ -282,7 +282,7 @@ export default function InputPanel({
                                                 damping: 10,
                                             }}
                                         >
-                                            <CornerDownLeftIcon
+                                            <ArrowUpIcon
                                                 className={cn(
                                                     input
                                                         ? 'text-background'
