@@ -1,4 +1,4 @@
-import { useMemo, memo, useState } from 'react';
+import { useMemo, memo, useState, useCallback } from 'react';
 import { Message, ToolInvocation } from 'ai';
 import { UserMessage } from '@/components/chat-message';
 import { BotMessage } from '@/components/chat-message';
@@ -32,7 +32,7 @@ interface RenderMessageProps {
     onRetry?: () => void;
 }
 
-export const RenderMessage = memo(function RenderMessage({
+export function RenderMessage({
     message,
     messageId,
     getIsOpen,
@@ -43,14 +43,14 @@ export const RenderMessage = memo(function RenderMessage({
 }: RenderMessageProps) {
     const [copied, setCopied] = useState(false);
 
-    const handleCopy = () => {
+    const handleCopy = useCallback(() => {
         if (message.content) {
             navigator.clipboard.writeText(message.content);
             setCopied(true);
             toast.success('Message copied to clipboard');
             setTimeout(() => setCopied(false), 1000);
         }
-    };
+    }, [message.content]);
 
     const iconVariants = {
         initial: { opacity: 0, scale: 0.8, rotate: -10 },
@@ -327,19 +327,12 @@ export const RenderMessage = memo(function RenderMessage({
                                 </Tooltip>
                             </TooltipProvider>
                         </div>
-                        <motion.p
-                            initial={{ opacity: 0, y: -5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.3, duration: 0.3 }}
-                            className="text-[10px] text-muted-foreground"
-                        >
+                        <p className="text-[10px] text-muted-foreground">
                             Verify Information. Mistakes are possible.
-                        </motion.p>
+                        </p>
                     </div>
                 </motion.div>
             )}
         </motion.div>
     );
-});
-
-RenderMessage.displayName = 'RenderMessage';
+}

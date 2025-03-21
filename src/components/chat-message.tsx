@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, memo } from 'react';
 import rehypeExternalLinks from 'rehype-external-links';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -252,7 +252,7 @@ interface BotMessageProps {
     className?: string;
 }
 
-export function BotMessage({ message, className }: BotMessageProps) {
+export const BotMessage = memo(function BotMessage({ message, className }: BotMessageProps) {
     const processedData = preprocessLaTeX(message);
     const { getCitationNumber } = useCitationCounter();
 
@@ -377,7 +377,9 @@ export function BotMessage({ message, className }: BotMessageProps) {
             </MemoizedReactMarkdown>
         </motion.div>
     );
-}
+});
+
+BotMessage.displayName = 'BotMessage';
 
 const preprocessLaTeX = (content: string) => {
     const blockProcessedContent = content.replace(
@@ -397,7 +399,7 @@ const preprocessLaTeX = (content: string) => {
     return processedParagraphs;
 };
 
-export const UserMessage: React.FC<{ message: string }> = ({ message }) => {
+export const UserMessage = memo(function UserMessage({ message }: { message: string }) {
     return (
         <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -408,4 +410,6 @@ export const UserMessage: React.FC<{ message: string }> = ({ message }) => {
             <div className="text-muted-foreground text-xl">{message}</div>
         </motion.div>
     );
-};
+});
+
+UserMessage.displayName = 'UserMessage';
