@@ -32,8 +32,6 @@ export function ChatMessages({
                     key={message.id}
                     message={message}
                     messageId={message.id}
-                    getIsOpen={() => true}
-                    onOpenChange={() => {}}
                     onQuerySelect={onQuerySelect}
                     chatId={chatId}
                     onRetry={onRetry ? () => onRetry(message) : undefined}

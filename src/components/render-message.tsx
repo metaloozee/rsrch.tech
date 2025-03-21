@@ -25,8 +25,6 @@ import { TextLoop } from './motion-primitives/text-loop';
 interface RenderMessageProps {
     message: Message;
     messageId: string;
-    getIsOpen: (id: string) => boolean;
-    onOpenChange: (id: string, open: boolean) => void;
     onQuerySelect: (query: string) => void;
     chatId?: string;
     onRetry?: () => void;
@@ -35,8 +33,6 @@ interface RenderMessageProps {
 export function RenderMessage({
     message,
     messageId,
-    getIsOpen,
-    onOpenChange,
     onQuerySelect,
     chatId,
     onRetry,

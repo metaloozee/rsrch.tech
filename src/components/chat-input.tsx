@@ -5,11 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { Message } from '@ai-sdk/react';
-import { useRef, useState } from 'react';
+import { ChangeEvent, useCallback, useRef, useState } from 'react';
 import {
     BrainIcon,
-    CornerDownLeftIcon,
-    GlobeLock,
     ScanSearchIcon,
     StopCircleIcon,
     FileText,
@@ -190,13 +188,13 @@ export default function InputPanel({
                             >
                                 <SelectTrigger className="cursor-pointer w-auto min-w-[120px] !bg-neutral-800/70 border-0 hover:!bg-neutral-800 hover:text-neutral-200 px-4 py-2 focus:ring-0 focus-visible:ring-0 rounded-md transition-all duration-300">
                                     <div className="flex items-center gap-2">
-                                        {(() => {
+                                        {useCallback(() => {
                                             const mode = responseModes.find(
                                                 (m) => m.value === responseMode
                                             );
                                             const Icon = mode?.icon as React.ElementType;
                                             return <Icon className={cn('size-4', mode?.color)} />;
-                                        })()}
+                                        }, [responseMode])()}
                                         <span className="text-xs font-medium">
                                             {responseModes.find((m) => m.value === responseMode)
                                                 ?.label || 'Concise'}
@@ -210,7 +208,7 @@ export default function InputPanel({
                                             <SelectItem
                                                 key={mode.value}
                                                 value={mode.value}
-                                                className="py-3 px-2 data-[highlighted]:bg-neutral-800 data-[highlighted]:text-neutral-200 cursor-pointer focus:outline-none"
+                                                className="py-2 px-4 data-[highlighted]:bg-neutral-800 data-[highlighted]:text-neutral-200 cursor-pointer focus:outline-none"
                                             >
                                                 <div className="flex items-center gap-2">
                                                     <Icon
@@ -263,12 +261,7 @@ export default function InputPanel({
                                         </motion.div>
                                     </Button>
                                 ) : (
-                                    <Button
-                                        size={'icon'}
-                                        type="submit"
-                                        disabled={!input || isLoading}
-                                        variant={input ? 'default' : 'secondary'}
-                                    >
+                                    <Button size={'icon'} type="submit" disabled={isLoading}>
                                         <motion.div
                                             initial={{ opacity: 0, y: -20 }}
                                             animate={{ opacity: 1, y: 0 }}
@@ -282,13 +275,7 @@ export default function InputPanel({
                                                 damping: 10,
                                             }}
                                         >
-                                            <ArrowUpIcon
-                                                className={cn(
-                                                    input
-                                                        ? 'text-background'
-                                                        : 'text-muted-foreground'
-                                                )}
-                                            />
+                                            <ArrowUpIcon />
                                         </motion.div>
                                     </Button>
                                 )}

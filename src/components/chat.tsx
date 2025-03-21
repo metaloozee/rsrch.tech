@@ -46,7 +46,7 @@ export default function Chat({
             });
             console.error(error);
         },
-        sendExtraMessageFields: false,
+        sendExtraMessageFields: true,
     });
 
     useEffect(() => {
