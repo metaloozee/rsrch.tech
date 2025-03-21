@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { Message } from '@ai-sdk/react';
-import { ChangeEvent, useCallback, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
     BrainIcon,
     ScanSearchIcon,
@@ -94,6 +94,19 @@ export default function InputPanel({
         }, 300);
     };
 
+    const onSubmit = useCallback(
+        (e: FormEvent<HTMLFormElement>) => {
+            e.preventDefault();
+            handleSubmit(e);
+        },
+        [handleSubmit]
+    );
+
+    const onInputChange = useCallback(
+        (e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange(e),
+        [handleInputChange]
+    );
+
     return (
         <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
@@ -128,7 +141,8 @@ export default function InputPanel({
                         </h1>
                     </motion.div>
                 ))}
-            <form onSubmit={handleSubmit} className="max-w-3xl w-full mx-auto">
+
+            <form onSubmit={onSubmit} className="max-w-3xl w-full mx-auto">
                 <div
                     className={cn(
                         'relative flex flex-col w-full p-4 gap-2 border border-neutral-700/50 shadow-lg bg-neutral-900 focus-within:border-accent hover:border-accent transition-all duration-300',
@@ -151,9 +165,7 @@ export default function InputPanel({
                         spellCheck={true}
                         value={input}
                         className="resize-none placeholder:text-neutral-500 w-full bg-transparent ring-0 border-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-                        onChange={(e) => {
-                            handleInputChange(e);
-                        }}
+                        onChange={onInputChange}
                         onKeyDown={(e) => {
                             if (
                                 e.key === 'Enter' &&

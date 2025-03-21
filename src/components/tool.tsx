@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { GlobeIcon, LoaderCircleIcon, SearchIcon, ListIcon } from 'lucide-react';
 import { TextShimmer } from './motion-primitives/text-shimmer';
 import { Separator } from '@/components/ui/separator';
@@ -27,7 +27,7 @@ export type ToolHeaderProps = {
     className?: string;
 };
 
-const ToolHeader = ({ icon, title, meta, className }: ToolHeaderProps) => (
+const ToolHeader = memo(({ icon, title, meta, className }: ToolHeaderProps) => (
     <div className={cn('flex gap-2 justify-between items-center', className)}>
         <div className="flex gap-2 justify-center items-center">
             {icon}
@@ -35,7 +35,7 @@ const ToolHeader = ({ icon, title, meta, className }: ToolHeaderProps) => (
         </div>
         {meta && <div>{meta}</div>}
     </div>
-);
+));
 
 export type ToolLoadingStateProps = {
     name: string;
@@ -156,9 +156,9 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                             <div className="w-full">
                                 <div className="text-xs font-medium mb-2">Search Queries</div>
                                 <div className="flex flex-wrap w-full gap-x-3 gap-y-2 justify-start items-center">
-                                    {results.map((res: any, index: number) => (
+                                    {results.map((res: any) => (
                                         <div
-                                            key={index}
+                                            key={res.query}
                                             className="flex justify-center items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
                                         >
                                             <SearchIcon className="size-3 text-neutral-400" />
@@ -175,38 +175,26 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                             <div className="text-xs font-medium mb-2">Sources</div>
                             <div className="flex flex-wrap w-full gap-2 justify-start items-center">
                                 {allDomains.map((domain: string, idx: number) => {
-                                    // Find a URL for this domain
-                                    const sourceItem = results
-                                        .flatMap((res: any) => res?.result?.results || [])
-                                        .find((r: any) => {
-                                            try {
-                                                return (
-                                                    new URL(r?.url || '#').hostname.replace(
-                                                        'www.',
-                                                        ''
-                                                    ) === domain
-                                                );
-                                            } catch {
-                                                return false;
-                                            }
-                                        });
+                                    const sourceItem = useMemo(() => {
+                                        return results
+                                            .flatMap((res: any) => res?.result?.results || [])
+                                            .find((r: any) => {
+                                                try {
+                                                    return (
+                                                        new URL(r?.url || '#').hostname.replace(
+                                                            'www.',
+                                                            ''
+                                                        ) === domain
+                                                    );
+                                                } catch {
+                                                    return false;
+                                                }
+                                            });
+                                    }, [results]);
 
                                     const url = sourceItem?.url || '#';
 
-                                    const domainCount = results
-                                        .flatMap((res: any) => res?.result?.results || [])
-                                        .filter((r: any) => {
-                                            try {
-                                                return (
-                                                    new URL(r?.url || '#').hostname.replace(
-                                                        'www.',
-                                                        ''
-                                                    ) === domain
-                                                );
-                                            } catch {
-                                                return false;
-                                            }
-                                        }).length;
+                                    const domainCount = sourceItem.length;
 
                                     return (
                                         <Link
@@ -234,9 +222,11 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                         </div>
 
                         {(() => {
-                            const allImages = results
-                                .flatMap((res: any) => res?.result?.images || [])
-                                .filter(Boolean);
+                            const allImages = useMemo(() => {
+                                return results
+                                    .flatMap((res: any) => res?.result?.images || [])
+                                    .filter(Boolean);
+                            }, [results]);
 
                             if (allImages.length === 0) return null;
 
@@ -244,17 +234,21 @@ const WebSearchRenderer = ({ results, className }: ToolRendererProps) => {
                                 [key: string]: boolean;
                             }>({});
 
-                            const displayImages = allImages
-                                .slice(0, 6)
-                                .filter((img: any) => availableImages[img?.url] !== false);
+                            const displayImages = useMemo(() => {
+                                return allImages
+                                    .slice(0, 6)
+                                    .filter((img: any) => availableImages[img?.url] !== false);
+                            }, [allImages]);
 
-                            const remainingCount = Math.max(
-                                0,
-                                allImages.length -
-                                    (Object.values(availableImages).filter((v) => v === false)
-                                        .length +
-                                        displayImages.length)
-                            );
+                            const remainingCount = useMemo(() => {
+                                return Math.max(
+                                    0,
+                                    allImages.length -
+                                        (Object.values(availableImages).filter((v) => v === false)
+                                            .length +
+                                            displayImages.length)
+                                );
+                            }, [allImages, displayImages, availableImages]);
 
                             if (displayImages.length === 0 && remainingCount === 0) return null;
 

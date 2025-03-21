@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, memo } from 'react';
+import React, { useRef, memo, useCallback } from 'react';
 import rehypeExternalLinks from 'rehype-external-links';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -62,12 +62,12 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     const match = /language-(\w+)/.exec(className || '');
     const [isCopied, setIsCopied] = React.useState(false);
 
-    const handleCopy = () => {
+    const handleCopy = useCallback(() => {
         const code = String(children).replace(/\n$/, '');
         navigator.clipboard.writeText(code);
         setIsCopied(true);
         setTimeout(() => setIsCopied(false), 2000);
-    };
+    }, [children]);
 
     const iconVariants = {
         initial: { opacity: 0, scale: 0.8, rotate: -10 },
@@ -254,6 +254,7 @@ interface BotMessageProps {
 
 export const BotMessage = memo(function BotMessage({ message, className }: BotMessageProps) {
     const processedData = preprocessLaTeX(message);
+
     const { getCitationNumber } = useCitationCounter();
 
     if (processedData.length <= 1) {

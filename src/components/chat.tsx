@@ -53,20 +53,6 @@ export default function Chat({
         setMessages(savedMessages);
     }, [id]);
 
-    const onSubmit = React.useCallback(
-        (e: FormEvent<HTMLFormElement>) => {
-            e.preventDefault();
-            handleSubmit(e);
-        },
-        [handleSubmit]
-    );
-
-    const onInputChange = React.useCallback(
-        (e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<HTMLTextAreaElement>) =>
-            handleInputChange(e),
-        [handleInputChange]
-    );
-
     const handleRetry = React.useCallback(
         (message: Message) => {
             if (message.role === 'assistant') {
@@ -111,8 +97,8 @@ export default function Chat({
 
             <InputPanel
                 input={input}
-                handleInputChange={onInputChange}
-                handleSubmit={onSubmit}
+                handleInputChange={handleInputChange}
+                handleSubmit={handleSubmit}
                 isLoading={isLoading}
                 messages={messages}
                 setMessages={setMessages}
