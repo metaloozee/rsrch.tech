@@ -1,5 +1,9 @@
 'use client';
 
+/**
+ * @deprecated Use UnifiedToolDisplay component instead
+ */
+
 import { useMemo } from 'react';
 import { Message } from 'ai';
 import { ToolAccordion, ToolData } from './tool-accordion';

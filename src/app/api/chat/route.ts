@@ -7,10 +7,12 @@ import {
     streamText,
     tool,
     Message,
+    generateObject,
 } from 'ai';
 
 import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
+import { openrouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
 import { ResponseMode } from '@/components/chat-input';
@@ -37,147 +39,75 @@ export async function POST(req: Request) {
             throw new Error('Invalid Body');
         }
 
-        return createDataStreamResponse({
-            async execute(dataStream) {
-                const res = await streamText({
-                    model: mistral('mistral-small-latest'),
-                    messages: convertToCoreMessages(messages),
-                    toolChoice: 'required',
-                    onError: ({ error }) => {
-                        console.error('Error Occurred in Step 1: ', error);
-                    },
-                    tools: {
-                        research_plan_generator: tool({
-                            description:
-                                'REQUIRED tool that must be called to generate research goals. You MUST wait for the results of this tool before responding.',
-                            parameters: z.object({
-                                goals: z
-                                    .array(
-                                        z.object({
-                                            goal: z.string(),
-                                            analysis: z.string(),
-                                        })
-                                    )
-                                    .max(responseMode === 'concise' ? 1 : 3),
-                            }),
-                            execute: async ({ goals }, { toolCallId }) => {
-                                dataStream.writeMessageAnnotation({
-                                    type: 'tool-call',
-                                    data: {
-                                        toolCallId,
-                                        toolName: 'research_plan_generator',
-                                        state: 'call',
-                                        args: JSON.stringify({ goals }),
-                                    },
-                                });
+        const { object: goals } = await generateObject({
+            model: openrouter('google/gemini-2.0-flash-lite-001'),
+            output: 'object',
+            messages: convertToCoreMessages(messages),
+            schema: z.object({
+                goals: z
+                    .object({
+                        goal: z.string(),
+                        analysis: z.string(),
+                    })
+                    .array()
+                    .max(responseMode === 'concise' ? 1 : 3),
+            }),
+            system: `
+You are a research goal extractor. Your task is to analyze the conversation history and extract specific research goals that need to be investigated.
 
-                                dataStream.writeMessageAnnotation({
-                                    type: 'tool-call',
-                                    data: {
-                                        toolCallId,
-                                        toolName: 'research_plan_generator',
-                                        state: 'result',
-                                        args: JSON.stringify({ goals }),
-                                        result: JSON.stringify({ goals }),
-                                    },
-                                });
+When analyzing the conversation:
+1. Identify the main question or request from the user
+2. Break down complex queries into distinct research goals
+3. Prioritize goals based on importance and logical sequence
+4. Format each goal as a clear, searchable objective
 
-                                return goals;
-                            },
-                        }),
-                    },
-                    system: `
-You are a language model designed to assist a research assistant application that has access to the internet. 
-Your primary function is to analyze the complete chat history along with the most recent query to extract the main goals that the user intends to achieve. 
+Important: Each goal should be specific enough to guide a web search but broad enough to capture relevant information. Do not make assumptions about facts - stick to extracting research needs from the conversation.
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
-
-Follow these steps carefully:
-1. Context Analysis
-    - Review the full chat history and the latest query.
-    - Identify recurring themes, requests, and explicit instructions.
-    - Determine the primary objectives that the user is aiming for, ensuring no important details are overlooked.
-
-2. Goal Extraction
-    - Extract and list each main goal mentioned or implied in the conversation.
-    - For each goal, ensure that you capture the essence of the objective succinctly and clearly.
-    - If any goal appears to have multiple facets, split it into individual actionable components.
-
-3. Research Analysis Generation
-    - For every extracted goal, generate a corresponding research analysis plan to be performed after the goal's completion.
-    - The research analysis should include:
-        - Key Questions: What specific questions should be answered to confirm the goal has been met effectively?
-        - Data Sources: Identify the types of online sources or databases that might be relevant.
-        - Methodology: Outline a step-by-step plan for conducting the analysis (e.g., literature reviews, data scraping, statistical methods, comparative analysis, etc.).
-        - Verification Steps: Include methods to validate the accuracy and relevance of the research findings.
-        - Next Steps: Suggest subsequent actions or follow-up research that could further enhance understanding or application of the goal's outcomes.
-
-4. Additional Considerations
-    - Maintain a balance between brevity and comprehensiveness, so that the research analysis plan is detailed yet succinct enough to be actionable.
-    - Prioritize clarity and directness so that subsequent automated modules or human users can follow your output without ambiguity.
-    - You are allowed to generate up to 3 goals.
 `,
-                });
+        });
 
-                res.mergeIntoDataStream(dataStream, {
-                    experimental_sendFinish: false,
-                });
-
+        return createDataStreamResponse({
+            async execute(dataStream) {
                 const toolResult = await streamText({
-                    model: mistral('mistral-small-latest'),
-                    messages: [
-                        ...convertToCoreMessages(messages),
-                        ...(await res.response).messages,
-                    ],
+                    model: openrouter('google/gemini-2.0-flash-001'),
+                    messages: [...convertToCoreMessages(messages)],
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 2: ', error);
                     },
                     system: `
-You are a research assistant tasked with delivering comprehensive, precise, and credible information based on a given Research Plan.
+You are a research assistant with access to multiple tools. Your task is to investigate research goals by performing targeted web searches, evaluating the results, and synthesizing coherent answers.
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
-CRITICAL INSTRUCTION:
-- You MUST use the web_search tool to fetch information relevant to the research goals.
-- NEVER respond without calling the web_search tool.
-- For EACH research goal, you MUST have relevant information fetched, if not then you can re-run the tools.
-- You can make multiple tool calls as needed, but each must be purposeful.
-- ALWAYS run and review tool outputs before writing your final synthesis.
+<research-goals>
+${JSON.stringify(goals)}
+</research-goals>
 
-Steps:
-1. Analyze the attached Research Plan to identify individual research goals.
-2. Generate multiple focused search queries for each identified goal.
-3. Call the web_search tool to fetch the latest information relevant to each query.
-4. Critically evaluate the results for accuracy, relevance, and credibility.
-5. Synthesize the data into coherent answers for each research goal, noting any gaps or inconsistencies.
-6. If the research gaps are too large or if responses stray from the goals, refine your queries and repeat tool execution.
+For each goal:
+1. Generate 2-3 effective search queries that will yield relevant, diverse information
+2. Call the web_search tool for each query
+3. Analyze the search results to extract key information, noting the source and recency
+4. Synthesize a coherent answer based on multiple search results
+5. Identify any information gaps or contradictions in the results
+6. Perform additional searches if necessary to resolve gaps or contradictions
 
-Available Tools:
-1. \`web_search\`
-    * Performs a web search to retrieve information from the internet.
-    * You MUST call this tool once per research goal.
-    * Parameters:
-        - \`search_queries\`: Array of search queries
+When evaluating sources:
+- Prioritize recent, authoritative sources
+- Note when information might be outdated or controversial
+- Identify consensus views vs. minority perspectives
 
-You MUST execute this entire process through proper tool calls. NEVER skip tool execution.
+
                     `,
                     tools: {
                         web_search: tool({
-                            description:
-                                'REQUIRED tool that must be called to perform internet searches. You MUST wait for the results of this tool before responding.',
                             parameters: z.object({
                                 plan: z.object({
-                                    goal: z
-                                        .string()
-                                        .describe('The goal extracted from the chat history'),
-                                    analysis: z
-                                        .string()
-                                        .describe(
-                                            'The analysis of the goal extracted from the chat history'
-                                        ),
+                                    goal: z.string(),
+                                    analysis: z.string(),
                                     search_queries: z
                                         .array(z.string())
-                                        .max(responseMode === 'concise' ? 2 : 10),
+                                        .max(responseMode === 'concise' ? 2 : 5),
                                 }),
                             }),
                             execute: async ({ plan }, { toolCallId }) => {
@@ -198,7 +128,7 @@ You MUST execute this entire process through proper tool calls. NEVER skip tool 
 
                                 const searchResults: SearchResult[] = [];
 
-                                const searchPromises = plan.search_queries.map(async (query, i) => {
+                                const searchPromises = plan.search_queries.map(async (query) => {
                                     const res = await tvly.search(query, {
                                         maxResults: 2,
                                         searchDepth:
@@ -261,7 +191,7 @@ Your job is to fix the arguments.
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
 
                         const { text: repairedText } = await generateText({
-                            model: mistral('mistral-small-latest'),
+                            model: openrouter('google/gemini-2.0-flash-001'),
                             messages: [
                                 {
                                     role: 'system',
@@ -304,10 +234,10 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    model: mistral('mistral-small-latest'),
+                    // model: openrouter("deepseek/deepseek-r1-distill-llama-70b"),
+                    model: openrouter('google/gemini-2.0-flash-001'),
                     messages: [
                         ...convertToCoreMessages(messages),
-                        ...(await res.response).messages,
                         ...(await toolResult.response).messages,
                     ],
                     experimental_transform: smoothStream(),
@@ -322,6 +252,10 @@ You are a high-level research assistant responsible for providing extremely conc
 Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
 CRITICAL INSTRUCTION - LIMIT YOUR RESPONSE TO 3-5 SENTENCES MAXIMUM
+
+<research-goals>
+${JSON.stringify(goals)}
+</research-goals>
 
 Primary Goal:
 - Provide the shortest possible clear answer to the user's query (3-5 sentences total).
@@ -343,6 +277,10 @@ Remember: Your entire response should be extremely brief (3-5 sentences) - this 
 You are a high-level research assistant responsible for providing comprehensive, credible, and precise information using the context from previous steps (e.g., research planning, data retrieval).
 
 Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+<research-goals>
+${JSON.stringify(goals)}
+</research-goals>
 
 Primary Goals:
 - Strictly adhere to guidelines and focus on the user's needs.

@@ -6,7 +6,7 @@ import { CopyIcon, RotateCwIcon, CheckIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { motion, AnimatePresence } from 'motion/react';
-import { ToolViewer } from '@/components/tool-viewer';
+import { UnifiedToolDisplay } from '@/components/unified-tool-display';
 
 interface RenderMessageProps {
     message: Message;
@@ -23,6 +23,11 @@ export function RenderMessage({
     chatId,
     onRetry,
 }: RenderMessageProps) {
+    console.log('Rendering message:', messageId);
+    console.log('Message structure:', JSON.stringify(message, null, 2));
+    console.log('Message parts:', message.parts);
+    console.log('Message annotations:', (message as any).annotations);
+
     const [copied, setCopied] = useState(false);
 
     const handleCopy = useCallback(() => {
@@ -68,7 +73,7 @@ export function RenderMessage({
             transition={{ duration: 0.1, ease: 'easeOut' }}
             className="mt-5 space-y-5"
         >
-            <ToolViewer message={message} />
+            <UnifiedToolDisplay message={message} />
 
             <BotMessage message={message.content} />
 

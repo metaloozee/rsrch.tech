@@ -1,5 +1,9 @@
 'use client';
 
+/**
+ * @deprecated Use UnifiedToolDisplay component instead
+ */
+
 import { memo, useState } from 'react';
 import { GlobeIcon, ListIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';

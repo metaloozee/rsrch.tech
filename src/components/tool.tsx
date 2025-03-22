@@ -1,5 +1,9 @@
 'use client';
 
+/**
+ * @deprecated Use UnifiedToolDisplay component instead
+ */
+
 import { memo, useState } from 'react';
 import { GlobeIcon, LoaderCircleIcon, SearchIcon, ListIcon } from 'lucide-react';
 import { TextShimmer } from './motion-primitives/text-shimmer';
