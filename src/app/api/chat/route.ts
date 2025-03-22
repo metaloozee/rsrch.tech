@@ -13,7 +13,6 @@ import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
-import { openrouter } from '@openrouter/ai-sdk-provider';
 import { ResponseMode } from '@/components/chat-input';
 
 export const maxDuration = 60;
@@ -40,6 +39,8 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
+                const allToolResults: Record<string, any> = {};
+
                 const res = await streamText({
                     model: mistral('mistral-small-latest'),
                     messages: convertToCoreMessages(messages),
@@ -62,6 +63,8 @@ export async function POST(req: Request) {
                                     .max(responseMode === 'concise' ? 1 : 3),
                             }),
                             execute: async ({ goals }, { toolCallId }) => {
+                                allToolResults.research_plan_generator = goals;
+
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
                                     data: {
@@ -70,6 +73,7 @@ export async function POST(req: Request) {
                                         state: 'result',
                                         args: JSON.stringify({ goals }),
                                         result: JSON.stringify({ goals }),
+                                        allToolResults, // Pass all tool results
                                     },
                                 });
 
@@ -115,11 +119,6 @@ Follow these steps carefully:
                 res.mergeIntoDataStream(dataStream, {
                     experimental_sendFinish: false,
                 });
-
-                const goalCount = (await res.response).messages
-                    .filter((m) => m.role === 'tool')
-                    .flatMap((g) => (g.content[0].result as unknown as any).length)
-                    .toLocaleString();
 
                 const toolResult = await streamText({
                     model: mistral('mistral-small-latest'),
@@ -205,6 +204,8 @@ You MUST execute this entire process through proper tool calls. NEVER skip tool 
 
                                 await Promise.all(searchPromises);
 
+                                allToolResults.web_search = searchResults;
+
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
                                     data: {
@@ -213,6 +214,7 @@ You MUST execute this entire process through proper tool calls. NEVER skip tool 
                                         state: 'result',
                                         args: JSON.stringify({ search_queries }),
                                         result: JSON.stringify({ search_results: searchResults }),
+                                        allToolResults,
                                     },
                                 });
 
@@ -285,16 +287,13 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    model: mistral('mistral-large-latest'),
+                    model: mistral('mistral-small-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         ...(await res.response).messages,
                         ...(await toolResult.response).messages,
                     ],
-                    experimental_transform: smoothStream({
-                        chunking: 'word',
-                        delayInMs: 30,
-                    }),
+                    experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 3: ', error);
                     },

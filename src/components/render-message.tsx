@@ -10,6 +10,7 @@ import {
     GlobeIcon,
     LoaderCircleIcon,
     BinocularsIcon,
+    ListIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -21,6 +22,7 @@ import {
     AccordionContent,
 } from '@/components/motion-primitives/accordion';
 import { TextLoop } from './motion-primitives/text-loop';
+import { TextShimmer } from './motion-primitives/text-shimmer';
 
 interface RenderMessageProps {
     message: Message;
@@ -92,9 +94,14 @@ export function RenderMessage({
         ).map(([_, value]) => value);
     }, [message.role, message.parts]);
 
-    // Group web search tools when there are more than one
-    const { webSearchTools, researchPlanTools, otherTools } = useMemo(() => {
-        if (!toolData) return { webSearchTools: [], researchPlanTools: [], otherTools: [] };
+    const { webSearchTools, researchPlanTools, otherTools, allToolResults } = useMemo(() => {
+        if (!toolData)
+            return {
+                webSearchTools: [],
+                researchPlanTools: [],
+                otherTools: [],
+                allToolResults: {},
+            };
 
         const webSearch = toolData.filter((tool) => tool.toolName === 'web_search');
         const researchPlan = toolData.filter((tool) => tool.toolName === 'research_plan_generator');
@@ -102,34 +109,73 @@ export function RenderMessage({
             (tool) => tool.toolName !== 'web_search' && tool.toolName !== 'research_plan_generator'
         );
 
+        const allResults: Record<string, any> = {};
+
+        const researchPlanData = researchPlan.find((tool) => tool.state === 'result')?.result;
+        if (researchPlanData) {
+            try {
+                let goals;
+                if (typeof researchPlanData === 'string') {
+                    const parsed = JSON.parse(researchPlanData);
+                    goals = parsed.goals || parsed.plan?.goals || parsed;
+                } else {
+                    goals = researchPlanData.goals || researchPlanData;
+                }
+
+                if (Array.isArray(goals)) {
+                    allResults.research_plan_generator = goals;
+                }
+            } catch (e) {
+                console.error('Error parsing research plan data:', e);
+            }
+        }
+
+        const webSearchData = webSearch.find((tool) => tool.state === 'result')?.result;
+        if (webSearchData) {
+            allResults.web_search = Array.isArray(webSearchData) ? webSearchData : [webSearchData];
+        }
+
         return {
             webSearchTools: webSearch,
             researchPlanTools: researchPlan,
             otherTools: others,
+            allToolResults: allResults,
         };
     }, [toolData]);
 
-    // Check if all web search tools have completed loading
-    const allWebSearchToolsComplete = useMemo(() => {
-        if (webSearchTools.length === 0) return true;
-        return webSearchTools.every((tool) => tool.state === 'result');
-    }, [webSearchTools]);
+    const canShowUnifiedView = useMemo(() => {
+        const hasCompleteResults =
+            allToolResults.research_plan_generator &&
+            allToolResults.web_search &&
+            researchPlanTools.some((tool) => tool.state === 'result') &&
+            webSearchTools.some((tool) => tool.state === 'result');
 
-    // Count how many web search tools are still loading
-    const loadingWebSearchCount = useMemo(() => {
-        return webSearchTools.filter((tool) => tool.state !== 'result').length;
-    }, [webSearchTools]);
+        const hasUnifiedLoading = researchPlanTools.length > 0 && webSearchTools.length > 0;
+
+        return hasCompleteResults || hasUnifiedLoading;
+    }, [allToolResults, researchPlanTools, webSearchTools]);
+
+    const allToolsComplete = useMemo(() => {
+        if (!toolData) return true;
+        return toolData.every((tool) => tool.state === 'result');
+    }, [toolData]);
+
+    const loadingToolsCount = useMemo(() => {
+        if (!toolData) return 0;
+        return toolData.filter((tool) => tool.state !== 'result').length;
+    }, [toolData]);
 
     const sourceCount = useMemo(() => {
         if (webSearchTools.length === 0) return 0;
 
         return webSearchTools.reduce((total, tool) => {
-            if (tool.state !== 'result' || !tool.result || !Array.isArray(tool.result))
-                return total;
+            if (tool.state !== 'result' || !tool.result) return total;
+
+            const results = Array.isArray(tool.result) ? tool.result : [tool.result];
 
             return (
                 total +
-                tool.result.reduce(
+                results.reduce(
                     (subtotal, query: any) => subtotal + (query?.result?.results?.length || 0),
                     0
                 )
@@ -141,10 +187,19 @@ export function RenderMessage({
         if (webSearchTools.length === 0) return 0;
 
         return webSearchTools.reduce((total, tool) => {
-            if (tool.state !== 'result' || !tool.result || !Array.isArray(tool.result))
-                return total;
-            return total + tool.result.length;
+            if (tool.state !== 'result' || !tool.result) return total;
+
+            const results = Array.isArray(tool.result) ? tool.result : [tool.result];
+            return total + results.length;
         }, 0);
+    }, [webSearchTools]);
+
+    const isResearchPlanLoading = useMemo(() => {
+        return researchPlanTools.some((tool) => tool.state === 'call');
+    }, [researchPlanTools]);
+
+    const isWebSearchLoading = useMemo(() => {
+        return webSearchTools.some((tool) => tool.state === 'call');
     }, [webSearchTools]);
 
     if (message.role === 'user') {
@@ -160,87 +215,156 @@ export function RenderMessage({
         >
             {toolData && toolData.length > 0 && (
                 <div className="flex flex-col gap-2">
-                    {researchPlanTools.map((tool) => (
-                        <Tool
-                            key={tool.toolCallId}
-                            state={tool.state}
-                            name={tool.toolName}
-                            results={tool.state === 'result' && tool.result}
-                        />
-                    ))}
-
-                    {webSearchTools.length > 1 ? (
+                    {canShowUnifiedView ? (
                         <div className="p-4 !w-full bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs">
-                            {allWebSearchToolsComplete ? (
-                                <Accordion className="w-full !no-underline">
-                                    <AccordionItem value="web-searches" className="border-none">
-                                        <AccordionTrigger className="p-0 w-full cursor-pointer">
-                                            <div className="flex w-full flex-col gap-2">
-                                                <div className="flex gap-2 justify-between items-center">
-                                                    <div className="flex gap-2 justify-center items-center">
-                                                        <BinocularsIcon className="size-3" />
-                                                        <span className="font-medium">Sources</span>
-                                                    </div>
-                                                    <div className="text-xs">
-                                                        {sourceCount}{' '}
-                                                        {sourceCount === 1 ? 'source' : 'sources'}{' '}
-                                                        from {searchQueryCount}{' '}
-                                                        {searchQueryCount === 1
-                                                            ? 'query'
-                                                            : 'queries'}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </AccordionTrigger>
-                                        <AccordionContent>
-                                            <div className="flex w-full flex-col gap-2 pt-4">
-                                                <div className="space-y-3 mt-1">
-                                                    {webSearchTools.map((tool, index) => (
-                                                        <Tool
-                                                            key={tool.toolCallId}
-                                                            state={tool.state}
-                                                            name={tool.toolName}
-                                                            results={
-                                                                tool.state === 'result' &&
-                                                                tool.result
-                                                            }
-                                                            className={'bg-neutral-950'}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                </Accordion>
+                            {allToolsComplete ? (
+                                <Tool
+                                    state="result"
+                                    name="research_plan_generator"
+                                    allToolResults={allToolResults}
+                                />
                             ) : (
                                 <div className="flex w-full flex-row justify-between items-center gap-4">
                                     <div className="flex flex-row gap-2 justify-center items-center">
-                                        <LoaderCircleIcon className="size-3 animate-spin" />
-                                        <div className="font-medium flex items-center gap-1.5">
-                                            <TextLoop
-                                                interval={3}
-                                                className="text-xs font-normal opacity-70"
-                                            >
-                                                {[
-                                                    `Running ${loadingWebSearchCount.toString()} ${loadingWebSearchCount === 1 ? 'search' : 'searches'}...`,
-                                                    `Searching the web...`,
-                                                    `Gathering sources...`,
-                                                ]}
-                                            </TextLoop>
-                                        </div>
+                                        {isResearchPlanLoading ? (
+                                            <>
+                                                <ListIcon className="size-3" />
+                                                <div className="font-medium flex items-center">
+                                                    <TextLoop
+                                                        interval={3}
+                                                        className="text-xs font-normal opacity-80"
+                                                    >
+                                                        {[
+                                                            'Generating Research Plan...',
+                                                            'Analyzing your query...',
+                                                            'Creating research goals...',
+                                                            'Planning research strategy...',
+                                                        ]}
+                                                    </TextLoop>
+                                                </div>
+                                            </>
+                                        ) : isWebSearchLoading ? (
+                                            <>
+                                                <GlobeIcon className="size-3" />
+                                                <div className="font-medium flex items-center">
+                                                    <TextLoop
+                                                        interval={3}
+                                                        className="text-xs font-normal opacity-80"
+                                                    >
+                                                        {[
+                                                            'Searching the Web...',
+                                                            'Querying information sources...',
+                                                            'Finding relevant content...',
+                                                            'Retrieving web results...',
+                                                        ]}
+                                                    </TextLoop>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <LoaderCircleIcon className="size-3 animate-spin" />
+                                                <div className="font-medium flex items-center gap-1.5">
+                                                    <TextLoop
+                                                        interval={3}
+                                                        className="text-xs font-normal opacity-70"
+                                                    >
+                                                        {[
+                                                            `Processing ${loadingToolsCount} tool${loadingToolsCount === 1 ? '' : 's'}...`,
+                                                            `Gathering research data...`,
+                                                            `Analyzing information...`,
+                                                        ]}
+                                                    </TextLoop>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             )}
                         </div>
                     ) : (
-                        webSearchTools.map((tool) => (
-                            <Tool
-                                key={tool.toolCallId}
-                                state={tool.state}
-                                name={tool.toolName}
-                                results={tool.state === 'result' && tool.result}
-                            />
-                        ))
+                        <>
+                            {researchPlanTools.map((tool) => (
+                                <Tool
+                                    key={tool.toolCallId}
+                                    state={tool.state}
+                                    name={tool.toolName}
+                                    results={tool.state === 'result' && tool.result}
+                                />
+                            ))}
+
+                            {webSearchTools.length > 0 && (
+                                <div className="p-4 !w-full bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs">
+                                    {webSearchTools.every((tool) => tool.state === 'result') ? (
+                                        <Accordion className="w-full !no-underline">
+                                            <AccordionItem
+                                                value="web-searches"
+                                                className="border-none"
+                                            >
+                                                <AccordionTrigger className="p-0 w-full cursor-pointer">
+                                                    <div className="flex w-full flex-col gap-2">
+                                                        <div className="flex gap-2 justify-between items-center">
+                                                            <div className="flex gap-2 justify-center items-center">
+                                                                <BinocularsIcon className="size-3" />
+                                                                <span className="font-medium">
+                                                                    Sources
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-xs">
+                                                                {sourceCount}{' '}
+                                                                {sourceCount === 1
+                                                                    ? 'source'
+                                                                    : 'sources'}{' '}
+                                                                from {searchQueryCount}{' '}
+                                                                {searchQueryCount === 1
+                                                                    ? 'query'
+                                                                    : 'queries'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </AccordionTrigger>
+                                                <AccordionContent>
+                                                    <div className="flex w-full flex-col gap-2 pt-4">
+                                                        <div className="space-y-3 mt-1">
+                                                            {webSearchTools.map((tool) => (
+                                                                <Tool
+                                                                    key={tool.toolCallId}
+                                                                    state={tool.state}
+                                                                    name={tool.toolName}
+                                                                    results={
+                                                                        tool.state === 'result' &&
+                                                                        tool.result
+                                                                    }
+                                                                    className={'bg-neutral-950'}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </AccordionContent>
+                                            </AccordionItem>
+                                        </Accordion>
+                                    ) : (
+                                        <div className="flex w-full flex-row justify-between items-center gap-4">
+                                            <div className="flex flex-row gap-2 justify-center items-center">
+                                                <GlobeIcon className="size-3" />
+                                                <div className="font-medium flex items-center">
+                                                    <TextLoop
+                                                        interval={3}
+                                                        className="text-xs font-normal opacity-80"
+                                                    >
+                                                        {[
+                                                            'Searching the Web...',
+                                                            'Querying information sources...',
+                                                            'Finding relevant content...',
+                                                            'Retrieving web results...',
+                                                        ]}
+                                                    </TextLoop>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {otherTools.map((tool) => (
