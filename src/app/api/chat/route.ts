@@ -39,8 +39,6 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                const allToolResults: Record<string, any> = {};
-
                 const res = await streamText({
                     model: mistral('mistral-small-latest'),
                     messages: convertToCoreMessages(messages),
@@ -63,7 +61,15 @@ export async function POST(req: Request) {
                                     .max(responseMode === 'concise' ? 1 : 3),
                             }),
                             execute: async ({ goals }, { toolCallId }) => {
-                                allToolResults.research_plan_generator = goals;
+                                dataStream.writeMessageAnnotation({
+                                    type: 'tool-call',
+                                    data: {
+                                        toolCallId,
+                                        toolName: 'research_plan_generator',
+                                        state: 'call',
+                                        args: JSON.stringify({ goals }),
+                                    },
+                                });
 
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
@@ -73,11 +79,8 @@ export async function POST(req: Request) {
                                         state: 'result',
                                         args: JSON.stringify({ goals }),
                                         result: JSON.stringify({ goals }),
-                                        allToolResults, // Pass all tool results
                                     },
                                 });
-
-                                console.log('Goals: ', goals);
 
                                 return goals;
                             },
@@ -163,26 +166,39 @@ You MUST execute this entire process through proper tool calls. NEVER skip tool 
                             description:
                                 'REQUIRED tool that must be called to perform internet searches. You MUST wait for the results of this tool before responding.',
                             parameters: z.object({
-                                search_queries: z
-                                    .array(z.string())
-                                    .max(responseMode === 'concise' ? 2 : 10),
+                                plan: z.object({
+                                    goal: z
+                                        .string()
+                                        .describe('The goal extracted from the chat history'),
+                                    analysis: z
+                                        .string()
+                                        .describe(
+                                            'The analysis of the goal extracted from the chat history'
+                                        ),
+                                    search_queries: z
+                                        .array(z.string())
+                                        .max(responseMode === 'concise' ? 2 : 10),
+                                }),
                             }),
-                            execute: async ({ search_queries }, { toolCallId }) => {
+                            execute: async ({ plan }, { toolCallId }) => {
+                                console.log(
+                                    `Running Search for the goal '${plan.goal}': `,
+                                    plan.search_queries
+                                );
+
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
                                     data: {
                                         toolCallId,
                                         toolName: 'web_search',
                                         state: 'call',
-                                        args: JSON.stringify({ search_queries }),
+                                        args: JSON.stringify({ plan }),
                                     },
                                 });
 
-                                console.log('Search Queries: ', search_queries);
-
                                 const searchResults: SearchResult[] = [];
 
-                                const searchPromises = search_queries.map(async (query, i) => {
+                                const searchPromises = plan.search_queries.map(async (query, i) => {
                                     const res = await tvly.search(query, {
                                         maxResults: 2,
                                         searchDepth:
@@ -204,17 +220,18 @@ You MUST execute this entire process through proper tool calls. NEVER skip tool 
 
                                 await Promise.all(searchPromises);
 
-                                allToolResults.web_search = searchResults;
-
                                 dataStream.writeMessageAnnotation({
                                     type: 'tool-call',
                                     data: {
                                         toolCallId,
                                         toolName: 'web_search',
                                         state: 'result',
-                                        args: JSON.stringify({ search_queries }),
-                                        result: JSON.stringify({ search_results: searchResults }),
-                                        allToolResults,
+                                        args: JSON.stringify({ plan }),
+                                        result: JSON.stringify({
+                                            goal: plan.goal,
+                                            analysis: plan.analysis,
+                                            search_results: searchResults,
+                                        }),
                                     },
                                 });
 
