@@ -41,39 +41,45 @@ export async function POST(req: Request) {
         }
 
         const { object: goals } = await generateObject({
-            // model: groq('llama-3.1-8b-instant'),
-            model: mistral('mistral-small-latest'),
+            model: groq('llama-3.1-8b-instant'),
+            // model: mistral('mistral-small-latest'),
             output: 'object',
             messages: convertToCoreMessages(messages),
             schema: z.object({
-                goals: z
-                    .object({
+                goals: z.array(
+                    z.object({
                         goal: z.string(),
                         analysis: z.string(),
                     })
-                    .array()
-                    .max(responseMode === 'concise' ? 1 : 3),
+                ),
             }),
             system: `
 You are a research goal extractor. Your task is to analyze the conversation history and extract specific research goals that need to be investigated.
 
 When analyzing the conversation:
-1. Identify the main question or request from the user
+1. Identify the main question or request from the user and the messages
 2. Break down complex queries into distinct research goals
 3. Prioritize goals based on importance and logical sequence
 4. Format each goal as a clear, searchable objective
+5. For each goal, provide a detailed analysis of the research needed to answer the goal
 
-Important: Each goal should be specific enough to guide a web search but broad enough to capture relevant information. Do not make assumptions about facts - stick to extracting research needs from the conversation.
+Important: 
+- Each goal should be specific enough to guide a web search but broad enough to capture relevant information. 
+- Do not make assumptions about facts - stick to extracting research needs from the conversation.
+- If the user's query is not clear, abort.
+- Generate 1-3 goals depending on the response mode.
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+Response Mode: ${responseMode}
+
 `,
         });
 
         return createDataStreamResponse({
             async execute(dataStream) {
                 const toolResult = await streamText({
-                    // model: groq("llama-3.3-70b-versatile"),
-                    model: mistral('mistral-small-latest'),
+                    model: groq('llama-3.3-70b-versatile'),
+                    // model: mistral('mistral-large-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         {
@@ -128,7 +134,7 @@ Critical Instructions:
                                     analysis: z.string(),
                                     search_queries: z
                                         .array(z.string())
-                                        .max(responseMode === 'concise' ? 2 : 5),
+                                        .max(responseMode === 'concise' ? 2 : 3),
                                 }),
                             }),
                             execute: async ({ plan }, { toolCallId }) => {
@@ -206,8 +212,8 @@ Critical Instructions:
                                 console.log(`Running Analysis for the goal: `, goal);
 
                                 const { text: result } = await generateText({
-                                    // model: groq("deepseek-r1-distill-llama-70b"),
-                                    model: mistral('mistral-small-latest'),
+                                    model: groq('deepseek-r1-distill-llama-70b'),
+                                    // model: mistral('mistral-small-latest'),
                                     providerOptions: {
                                         groq: {
                                             reasoningFormat: 'hidden',
@@ -253,8 +259,8 @@ The tool accepts the following schema: ${JSON.stringify(parameterSchema(toolCall
 Your job is to fix the arguments.
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
                         const { text: repairedText } = await generateText({
-                            // model: groq('llama-3.1-8b-instant'),
-                            model: mistral('mistral-small-latest'),
+                            model: groq('llama-3.1-8b-instant'),
+                            // model: mistral('mistral-small-latest'),
                             messages: [
                                 {
                                     role: 'system',
@@ -297,8 +303,8 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    // model: groq('llama-3.3-70b-versatile'),
-                    model: mistral('mistral-large-latest'),
+                    model: groq('llama-3.3-70b-versatile'),
+                    // model: mistral('mistral-large-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
                         {
