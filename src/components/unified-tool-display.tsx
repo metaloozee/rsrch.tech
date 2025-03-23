@@ -200,11 +200,10 @@ function renderResearch(tools: ToolData[]) {
         return null;
     }
 
-    const resultTool = searchTools.find((tool) => tool.state === 'result' && tool.result);
-
+    const resultTools = searchTools.filter((tool) => tool.state === 'result' && tool.result);
     const isLoading = searchTools.some((tool) => tool.state === 'call');
 
-    if (isLoading || !resultTool || !resultTool.result) {
+    if (isLoading || resultTools.length === 0) {
         return (
             <Accordion className="bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs mb-5">
                 <AccordionItem value="research" className="border-none">
@@ -236,46 +235,73 @@ function renderResearch(tools: ToolData[]) {
     }
 
     try {
-        const { goal, search_results } = resultTool.result;
+        // Process all search results
+        const allGoals: {
+            goal: string;
+            queries: string[];
+            sources: any[];
+            domainMap: Record<string, { count: number; url: string; title: string }>;
+        }[] = [];
 
-        if (!goal || !search_results || !Array.isArray(search_results)) {
-            return null;
+        for (const resultTool of resultTools) {
+            const { goal, search_results } = resultTool.result;
+
+            if (!goal || !search_results || !Array.isArray(search_results)) {
+                continue;
+            }
+
+            const queries = search_results.map((sr) => sr.query);
+            const sources = search_results
+                .filter((sr) => sr.result && sr.result.results)
+                .flatMap((sr) => sr.result.results)
+                .filter(Boolean);
+
+            const domainMap: Record<string, { count: number; url: string; title: string }> = {};
+            sources.forEach((source) => {
+                try {
+                    const sourceUrl = source?.url || '#';
+                    const domain = new URL(sourceUrl).hostname.replace('www.', '');
+
+                    if (!domainMap[domain]) {
+                        domainMap[domain] = {
+                            count: 0,
+                            url: sourceUrl,
+                            title: source?.title || domain,
+                        };
+                    }
+                    domainMap[domain].count++;
+                } catch (e) {
+                    console.error('Error processing URL:', e);
+                    if (!domainMap['unknown']) {
+                        domainMap['unknown'] = {
+                            count: 0,
+                            url: '#',
+                            title: 'Unknown Source',
+                        };
+                    }
+                    domainMap['unknown'].count++;
+                }
+            });
+
+            allGoals.push({
+                goal,
+                queries,
+                sources,
+                domainMap,
+            });
         }
 
-        const queries = search_results.map((sr) => sr.query);
-        const sources = search_results
-            .filter((sr) => sr.result && sr.result.results)
-            .flatMap((sr) => sr.result.results)
-            .filter(Boolean);
+        // Calculate total stats for header
+        const totalGoals = allGoals.length;
+        const totalQueries = allGoals.reduce((sum, goal) => sum + goal.queries.length, 0);
 
-        const domainMap: Record<string, { count: number; url: string; title: string }> = {};
-        sources.forEach((source) => {
-            try {
-                const sourceUrl = source?.url || '#';
-                const domain = new URL(sourceUrl).hostname.replace('www.', '');
-
-                if (!domainMap[domain]) {
-                    domainMap[domain] = {
-                        count: 0,
-                        url: sourceUrl,
-                        title: source?.title || domain,
-                    };
-                }
-                domainMap[domain].count++;
-            } catch (e) {
-                console.error('Error processing URL:', e);
-                if (!domainMap['unknown']) {
-                    domainMap['unknown'] = {
-                        count: 0,
-                        url: '#',
-                        title: 'Unknown Source',
-                    };
-                }
-                domainMap['unknown'].count++;
-            }
+        // Count the total unique sources across all goals
+        const allSourcesSet = new Set<string>();
+        allGoals.forEach((goal) => {
+            // Count all unique sources
+            Object.entries(goal.domainMap).forEach(([domain]) => allSourcesSet.add(domain));
         });
-
-        const uniqueDomainsCount = Object.keys(domainMap).length;
+        const totalSources = allSourcesSet.size;
 
         return (
             <Accordion className="bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs mb-5">
@@ -287,76 +313,80 @@ function renderResearch(tools: ToolData[]) {
                                 <span className="font-medium">Research</span>
                             </div>
                             <div className="flex flex-shrink-0 gap-2 text-xs opacity-80 ml-auto">
-                                <span>1 goal</span>
+                                <span>
+                                    {totalGoals} {totalGoals === 1 ? 'goal' : 'goals'}
+                                </span>
                                 <span>•</span>
-                                <span>{queries.length} queries</span>
+                                <span>{totalQueries} queries</span>
                                 <span>•</span>
                                 <span>
-                                    {uniqueDomainsCount}{' '}
-                                    {uniqueDomainsCount === 1 ? 'source' : 'sources'}
+                                    {totalSources} {totalSources === 1 ? 'source' : 'sources'}
                                 </span>
                             </div>
                         </div>
                     </AccordionTrigger>
                     <AccordionContent>
                         <div className="space-y-6 p-4">
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <div className="font-medium">{goal}</div>
-                                </div>
+                            {allGoals.map((goalData, goalIndex) => (
+                                <div key={goalIndex} className="space-y-3">
+                                    {goalIndex > 0 && <hr className="border-neutral-800 my-4" />}
 
-                                <div className="w-full flex flex-col gap-3">
-                                    <div className="w-full">
-                                        <div className="text-xs font-medium mb-2">
-                                            Search Queries
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {queries.map((query, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
-                                                >
-                                                    <SearchIcon className="size-3 text-neutral-400" />
-                                                    <span className="text-xs">{query}</span>
-                                                </div>
-                                            ))}
-                                        </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="font-medium">{goalData.goal}</div>
                                     </div>
 
-                                    <div className="w-full">
-                                        <div className="text-xs font-medium mb-2">Sources</div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {Object.entries(domainMap)
-                                                .sort((a, b) => b[1].count - a[1].count)
-                                                .slice(0, 8)
-                                                .map(([domain, info], idx) => (
-                                                    <Link
+                                    <div className="w-full flex flex-col gap-3">
+                                        <div className="w-full">
+                                            <div className="text-xs font-medium mb-2">
+                                                Search Queries
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {goalData.queries.map((query, idx) => (
+                                                    <div
                                                         key={idx}
-                                                        target="_blank"
-                                                        href={info.url}
-                                                        className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                                                        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
                                                     >
-                                                        <img
-                                                            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
-                                                            width={12}
-                                                            height={12}
-                                                            className="rounded-sm"
-                                                            alt=""
-                                                        />
-                                                        <span className="text-xs font-medium truncate">
-                                                            {domain}
-                                                        </span>
-                                                        {info.count > 1 && (
-                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
-                                                                {info.count}
-                                                            </span>
-                                                        )}
-                                                    </Link>
+                                                        <SearchIcon className="size-3 text-neutral-400" />
+                                                        <span className="text-xs">{query}</span>
+                                                    </div>
                                                 ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="w-full">
+                                            <div className="text-xs font-medium mb-2">Sources</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {Object.entries(goalData.domainMap)
+                                                    .sort((a, b) => b[1].count - a[1].count)
+                                                    .map(([domain, info], idx) => (
+                                                        <Link
+                                                            key={idx}
+                                                            target="_blank"
+                                                            href={info.url}
+                                                            className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                                                        >
+                                                            <img
+                                                                src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                                                                width={12}
+                                                                height={12}
+                                                                className="rounded-sm"
+                                                                alt=""
+                                                            />
+                                                            <span className="text-xs font-medium truncate">
+                                                                {domain}
+                                                            </span>
+                                                            {info.count > 1 && (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
+                                                                    {info.count}
+                                                                </span>
+                                                            )}
+                                                        </Link>
+                                                    ))}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            ))}
                         </div>
                     </AccordionContent>
                 </AccordionItem>

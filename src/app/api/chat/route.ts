@@ -13,6 +13,7 @@ import {
 import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
 import { openrouter } from '@openrouter/ai-sdk-provider';
+import { groq } from '@ai-sdk/groq';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
 import { ResponseMode } from '@/components/chat-input';
@@ -40,7 +41,8 @@ export async function POST(req: Request) {
         }
 
         const { object: goals } = await generateObject({
-            model: openrouter('google/gemini-2.0-flash-lite-001'),
+            // model: groq('llama-3.1-8b-instant'),
+            model: mistral('mistral-small-latest'),
             output: 'object',
             messages: convertToCoreMessages(messages),
             schema: z.object({
@@ -70,34 +72,53 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
         return createDataStreamResponse({
             async execute(dataStream) {
                 const toolResult = await streamText({
-                    model: openrouter('google/gemini-2.0-flash-001'),
-                    messages: [...convertToCoreMessages(messages)],
+                    // model: groq("llama-3.3-70b-versatile"),
+                    model: mistral('mistral-small-latest'),
+                    messages: [
+                        ...convertToCoreMessages(messages),
+                        {
+                            role: 'system',
+                            content: `Research Goals: \n\n ${JSON.stringify(goals)}`,
+                        },
+                    ],
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 2: ', error);
                     },
                     system: `
-You are a research assistant with access to multiple tools. Your task is to investigate research goals by performing targeted web searches, evaluating the results, and synthesizing coherent answers.
+You are a research assistant tasked with delivering comprehensive, precise, and credible information based on a given research plan.
+Your task is to investigate research goals by performing targeted web searches, evaluating the results, and synthesizing coherent answers.
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
-<research-goals>
-${JSON.stringify(goals)}
-</research-goals>
+Available Tools: 
+1. \`web_search\`:
+    * Description: Performs a web search and returns relevant results.
+    * Required: True
+2. \`analyze\`:
+    * Description: 
+        - Critically evaluates the results from the \`web_search\` tool for accuracy, relevance, and credibility. 
+        - Synthesizes the data into coherent answers for the respective research goal, noting any gaps or inconsistencies.
+    * Required: True
 
-For each goal:
-1. Generate 2-3 effective search queries that will yield relevant, diverse information
-2. Call the web_search tool for each query
-3. Analyze the search results to extract key information, noting the source and recency
-4. Synthesize a coherent answer based on multiple search results
-5. Identify any information gaps or contradictions in the results
-6. Perform additional searches if necessary to resolve gaps or contradictions
+Workflow: 
+* For each goal provided, you must adhere to the following steps iteratively.*
+1. Generate up-to 5 effective search queries that will yield relevant, diverse information.
+2. Call the \`web_search\` tool.
+3. Call the \`analyze\` tool.
+4. If the research gaps are too large or if responses stray from the goals, refine the queries and repeat the workflow.
 
 When evaluating sources:
 - Prioritize recent, authoritative sources
 - Note when information might be outdated or controversial
 - Identify consensus views vs. minority perspectives
 
-
+Critical Instructions:
+- You MUST ALWAYS use the \`web_search\` tool to perform web searches.
+- You MUST ALWAYS use the \`analyze\` tool to critically evaluate the results from the \`web_search\` tool.
+- For EACH research goal, you MUST have relevant information fetched, if not then you can re-run the tools.
+- You can make multiple tool calls as needed, but each must be purposeful.
+- ALWAYS run and review tool outputs before writing your final synthesis.
+- DO NOT describe your PROCESS, PLANNING STEPS, or tool execution NARRATIVES.
                     `,
                     tools: {
                         web_search: tool({
@@ -168,6 +189,48 @@ When evaluating sources:
                                 return searchResults;
                             },
                         }),
+                        analyze: tool({
+                            parameters: z.object({
+                                searchResults: z
+                                    .object({
+                                        query: z.string(),
+                                        result: z.any().optional(),
+                                        success: z.boolean(),
+                                        error: z.any().optional(),
+                                    })
+                                    .array(),
+                                goal: z.string(),
+                                analysis: z.string(),
+                            }),
+                            execute: async ({ searchResults, goal, analysis }, { toolCallId }) => {
+                                console.log(`Running Analysis for the goal: `, goal);
+
+                                const { text: result } = await generateText({
+                                    // model: groq("deepseek-r1-distill-llama-70b"),
+                                    model: mistral('mistral-small-latest'),
+                                    providerOptions: {
+                                        groq: {
+                                            reasoningFormat: 'hidden',
+                                        },
+                                    },
+                                    prompt: `
+You are a research assistant tasked with delivering comprehensive, precise, and credible analysis on the provided search results for a specific research goal and its analysis.
+Your task is to critically evaluate the results from a previous step and synthesize the data into coherent answers for the respective research goal, noting any gaps or inconsistencies.
+
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+Goal: ${goal}
+Analysis: ${analysis}
+
+<search-results>
+${JSON.stringify(searchResults)}
+</search-results>
+                                    `,
+                                });
+
+                                return result;
+                            },
+                        }),
                     },
                     experimental_repairToolCall: async ({
                         toolCall,
@@ -189,9 +252,9 @@ The tool accepts the following schema: ${JSON.stringify(parameterSchema(toolCall
 
 Your job is to fix the arguments.
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
-
                         const { text: repairedText } = await generateText({
-                            model: openrouter('google/gemini-2.0-flash-001'),
+                            // model: groq('llama-3.1-8b-instant'),
+                            model: mistral('mistral-small-latest'),
                             messages: [
                                 {
                                     role: 'system',
@@ -234,10 +297,14 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    // model: openrouter("deepseek/deepseek-r1-distill-llama-70b"),
-                    model: openrouter('google/gemini-2.0-flash-001'),
+                    // model: groq('llama-3.3-70b-versatile'),
+                    model: mistral('mistral-large-latest'),
                     messages: [
                         ...convertToCoreMessages(messages),
+                        {
+                            role: 'system',
+                            content: `Research Goals: \n\n ${JSON.stringify(goals)}`,
+                        },
                         ...(await toolResult.response).messages,
                     ],
                     experimental_transform: smoothStream(),
@@ -251,7 +318,7 @@ You are a high-level research assistant responsible for providing extremely conc
 
 Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
-CRITICAL INSTRUCTION - LIMIT YOUR RESPONSE TO 3-5 SENTENCES MAXIMUM
+CRITICAL INSTRUCTION - LIMIT YOUR RESPONSE TO 3-4 SENTENCES MAXIMUM
 
 <research-goals>
 ${JSON.stringify(goals)}
