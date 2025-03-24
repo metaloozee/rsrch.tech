@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState } from 'react';
+import { useState } from 'react';
 import { ListIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -184,14 +184,14 @@ function extractToolDataFromPart(part: any): ToolData | null {
     return null;
 }
 
-export const UnifiedToolDisplay = memo(({ message, className }: UnifiedToolDisplayProps) => {
+export const UnifiedToolDisplay = ({ message, className }: UnifiedToolDisplayProps) => {
     const tools = extractToolData(message);
     if (!tools || tools.length === 0) {
         return null;
     }
 
     return renderResearch(tools);
-});
+};
 
 function renderResearch(tools: ToolData[]) {
     const searchTools = tools.filter((tool) => tool.toolName === 'web_search');
@@ -394,5 +394,3 @@ function renderResearch(tools: ToolData[]) {
         return null;
     }
 }
-
-UnifiedToolDisplay.displayName = 'UnifiedToolDisplay';

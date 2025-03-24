@@ -1,5 +1,4 @@
 import * as React from 'react';
-
 import { JSONValue, Message } from 'ai';
 import { LoaderCircleIcon } from 'lucide-react';
 import { RenderMessage } from '@/components/render-message';
@@ -25,6 +24,15 @@ export function ChatMessages({
 
     const showLoading = isLoading && messages[messages.length - 1].role === 'user';
 
+    // Create direct callbacks instead of memoized ones
+    const retryCallbacks: Record<string, () => void> = {};
+
+    if (onRetry) {
+        messages.forEach((message) => {
+            retryCallbacks[message.id] = () => onRetry(message);
+        });
+    }
+
     return (
         <div className="px-6 w-full mt-10 mx-auto max-w-3xl">
             {messages.map((message) => (
@@ -34,7 +42,7 @@ export function ChatMessages({
                     messageId={message.id}
                     onQuerySelect={onQuerySelect}
                     chatId={chatId}
-                    onRetry={onRetry ? () => onRetry(message) : undefined}
+                    onRetry={onRetry ? retryCallbacks[message.id] : undefined}
                 />
             ))}
 

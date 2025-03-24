@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, memo, useCallback } from 'react';
+import React, { useRef, useState } from 'react';
 import rehypeExternalLinks from 'rehype-external-links';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -59,15 +59,15 @@ const getFaviconUrl = (domain: string): string => {
 };
 
 const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+    const [copied, setCopied] = useState(false);
     const match = /language-(\w+)/.exec(className || '');
-    const [isCopied, setIsCopied] = React.useState(false);
 
-    const handleCopy = useCallback(() => {
+    const handleCopy = () => {
         const code = String(children).replace(/\n$/, '');
         navigator.clipboard.writeText(code);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-    }, [children]);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     const iconVariants = {
         initial: { opacity: 0, scale: 0.8, rotate: -10 },
@@ -95,10 +95,10 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                         size={'icon'}
                         className="transition-all duration-200"
                         onClick={handleCopy}
-                        title={isCopied ? 'Copied!' : 'Copy code'}
+                        title={copied ? 'Copied!' : 'Copy code'}
                     >
                         <AnimatePresence mode="wait" initial={false}>
-                            {isCopied && (
+                            {copied && (
                                 <motion.span
                                     className="absolute inset-0 bg-foreground/10 rounded-sm"
                                     variants={rippleVariants}
@@ -110,14 +110,14 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                         </AnimatePresence>
                         <AnimatePresence mode="wait" initial={false}>
                             <motion.div
-                                key={isCopied ? 'check' : 'copy'}
+                                key={copied ? 'check' : 'copy'}
                                 variants={iconVariants}
                                 initial="initial"
                                 animate="animate"
                                 exit="exit"
                                 transition={{ duration: 0.2 }}
                             >
-                                {isCopied ? (
+                                {copied ? (
                                     <CheckIcon className="text-muted-foreground size-3" />
                                 ) : (
                                     <CopyIcon className="text-muted-foreground size-3" />
@@ -126,7 +126,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                         </AnimatePresence>
                     </Button>
                     <AnimatePresence>
-                        {isCopied && (
+                        {copied && (
                             <motion.div
                                 initial={{ opacity: 0, y: 5 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -252,9 +252,8 @@ interface BotMessageProps {
     className?: string;
 }
 
-export const BotMessage = memo(function BotMessage({ message, className }: BotMessageProps) {
+export function BotMessage({ message, className }: BotMessageProps) {
     const processedData = preprocessLaTeX(message);
-
     const { getCitationNumber } = useCitationCounter();
 
     if (processedData.length <= 1) {
@@ -273,6 +272,14 @@ export const BotMessage = memo(function BotMessage({ message, className }: BotMe
             'prose-blockquote:border-l-4 prose-blockquote:border-primary/70 prose-blockquote:pl-4 prose-blockquote:py-1 prose-blockquote:bg-muted/20 prose-blockquote:rounded-r',
             className
         ),
+    };
+
+    const motionProps = {
+        initial: { opacity: 0, y: -10 },
+        animate: { opacity: 1, y: 0 },
+        transition: { type: 'spring', stiffness: 400, damping: 10 },
+        className: 'w-full flex flex-col justify-start items-start',
+        suppressHydrationWarning: true,
     };
 
     const customMarkdownComponents = {
@@ -312,7 +319,7 @@ export const BotMessage = memo(function BotMessage({ message, className }: BotMe
                                     </Badge>
                                 </sup>
                             </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[300px] p-3">
+                            <TooltipContent>
                                 <div className="flex flex-col gap-2">
                                     <p className="font-medium text-sm">{children || 'Source'}</p>
                                     <div className="flex items-center">
@@ -352,13 +359,7 @@ export const BotMessage = memo(function BotMessage({ message, className }: BotMe
     };
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 10 }}
-            className="w-full flex flex-col justify-start items-start"
-            suppressHydrationWarning
-        >
+        <motion.div {...motionProps}>
             <div className="my-2 flex flex-row justify-start items-center gap-2">
                 <SparklesIcon className="size-4" />
                 <p className="text-sm">Answer</p>
@@ -378,7 +379,7 @@ export const BotMessage = memo(function BotMessage({ message, className }: BotMe
             </MemoizedReactMarkdown>
         </motion.div>
     );
-});
+}
 
 BotMessage.displayName = 'BotMessage';
 
@@ -400,7 +401,7 @@ const preprocessLaTeX = (content: string) => {
     return processedParagraphs;
 };
 
-export const UserMessage = memo(function UserMessage({ message }: { message: string }) {
+export function UserMessage({ message }: { message: string }) {
     return (
         <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -411,6 +412,6 @@ export const UserMessage = memo(function UserMessage({ message }: { message: str
             <div className="text-muted-foreground text-xl">{message}</div>
         </motion.div>
     );
-});
+}
 
 UserMessage.displayName = 'UserMessage';

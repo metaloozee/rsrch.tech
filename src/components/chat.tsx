@@ -53,25 +53,22 @@ export default function Chat({
         setMessages(savedMessages);
     }, [id]);
 
-    const handleRetry = React.useCallback(
-        (message: Message) => {
-            if (message.role === 'assistant') {
-                const index = messages.findIndex((m) => m.id === message.id);
-                if (index > 0 && messages[index - 1].role === 'user') {
-                    const userMessage = messages[index - 1];
+    const handleRetry = (message: Message) => {
+        if (message.role === 'assistant') {
+            const index = messages.findIndex((m) => m.id === message.id);
+            if (index > 0 && messages[index - 1].role === 'user') {
+                const userMessage = messages[index - 1];
 
-                    const newMessages = messages.slice(0, index - 1);
-                    setMessages(newMessages);
+                const newMessages = messages.slice(0, index - 1);
+                setMessages(newMessages);
 
-                    append({
-                        role: 'user',
-                        content: userMessage.content,
-                    });
-                }
+                append({
+                    role: 'user',
+                    content: userMessage.content,
+                });
             }
-        },
-        [messages, setMessages, append]
-    );
+        }
+    };
 
     return (
         <div
