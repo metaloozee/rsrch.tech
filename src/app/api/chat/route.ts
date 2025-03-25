@@ -12,8 +12,8 @@ import {
 
 import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
-import { openrouter } from '@openrouter/ai-sdk-provider';
 import { groq } from '@ai-sdk/groq';
+import { cerebras } from '@ai-sdk/cerebras';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
 import { ResponseMode } from '@/components/chat-input';
@@ -29,6 +29,8 @@ export interface SearchResult {
     error?: any;
 }
 
+const model = mistral('mistral-small-latest');
+
 export async function POST(req: Request) {
     try {
         const {
@@ -41,8 +43,7 @@ export async function POST(req: Request) {
         }
 
         const { object: goals } = await generateObject({
-            model: groq('llama-3.1-8b-instant'),
-            // model: mistral('mistral-small-latest'),
+            model,
             output: 'object',
             messages: convertToCoreMessages(messages),
             schema: z.object({
@@ -78,8 +79,12 @@ Response Mode: ${responseMode}
         return createDataStreamResponse({
             async execute(dataStream) {
                 const toolResult = await streamText({
-                    model: groq('llama-3.3-70b-versatile'),
-                    // model: mistral('mistral-large-latest'),
+                    model: mistral('mistral-large-latest'),
+                    providerOptions: {
+                        mistral: {
+                            parallelToolCalls: true,
+                        },
+                    },
                     messages: [
                         ...convertToCoreMessages(messages),
                         {
@@ -212,8 +217,7 @@ Critical Instructions:
                                 console.log(`Running Analysis for the goal: `, goal);
 
                                 const { text: result } = await generateText({
-                                    model: groq('deepseek-r1-distill-llama-70b'),
-                                    // model: mistral('mistral-small-latest'),
+                                    model,
                                     providerOptions: {
                                         groq: {
                                             reasoningFormat: 'hidden',
@@ -259,8 +263,7 @@ The tool accepts the following schema: ${JSON.stringify(parameterSchema(toolCall
 Your job is to fix the arguments.
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
                         const { text: repairedText } = await generateText({
-                            model: groq('llama-3.1-8b-instant'),
-                            // model: mistral('mistral-small-latest'),
+                            model,
                             messages: [
                                 {
                                     role: 'system',
@@ -303,8 +306,7 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    model: groq('llama-3.3-70b-versatile'),
-                    // model: mistral('mistral-large-latest'),
+                    model,
                     messages: [
                         ...convertToCoreMessages(messages),
                         {
