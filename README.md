@@ -13,10 +13,12 @@ This application combines the power of large language models with web search cap
 This project is under active development. Below are some of the planned improvements:
 
 - [ ] Add export to pdf feature
-- [ ] Performance Optimization
-- [x] Add citation management
-- [ ] Improve mobile responsiveness
-- [ ] Implement the Research mode
+- [x] ~~Performance Optimization~~
+- [x] ~~Add citation management~~
+- [x] ~~Improve mobile responsiveness~~
+- [ ] Research mode
+- [ ] User Authentication
+- [ ] Persistent history
 
 ## Tech Stack
 

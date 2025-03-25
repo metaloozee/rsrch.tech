@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { Message } from '@ai-sdk/react';
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     BrainIcon,
     ScanSearchIcon,
@@ -22,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { TextMorph } from '@/components/ui/text-morph';
 
 interface InputPanelProps {
     input: string;
@@ -46,6 +47,7 @@ const responseModes = [
         description: 'Brief, direct responses',
         icon: ZapIcon,
         color: 'text-blue-500',
+        isDisabled: false,
     },
     {
         value: 'descriptive',
@@ -53,13 +55,15 @@ const responseModes = [
         description: 'Detailed explanations',
         icon: FileText,
         color: 'text-emerald-500',
+        isDisabled: false,
     },
     {
         value: 'research',
         label: 'Research',
-        description: 'In-depth analysis with sources',
+        description: 'In-depth reports',
         icon: BrainIcon,
         color: 'text-amber-500',
+        isDisabled: true,
     },
 ];
 
@@ -194,7 +198,7 @@ export default function InputPanel({
                                 }}
                             >
                                 <SelectTrigger className="cursor-pointer w-auto min-w-[120px] !bg-neutral-800/70 border-0 hover:!bg-neutral-800 hover:text-neutral-200 px-4 py-2 focus:ring-0 focus-visible:ring-0 rounded-md transition-all duration-300">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 transition-colors">
                                         {(() => {
                                             const mode = responseModes.find(
                                                 (m) => m.value === responseMode
@@ -202,10 +206,10 @@ export default function InputPanel({
                                             const Icon = mode?.icon as React.ElementType;
                                             return <Icon className={cn('size-4', mode?.color)} />;
                                         })()}
-                                        <span className="text-xs font-medium">
+                                        <TextMorph className="text-xs font-medium">
                                             {responseModes.find((m) => m.value === responseMode)
                                                 ?.label || 'Concise'}
-                                        </span>
+                                        </TextMorph>
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent className="bg-neutral-900 border-accent text-neutral-100">
@@ -215,9 +219,10 @@ export default function InputPanel({
                                             <SelectItem
                                                 key={mode.value}
                                                 value={mode.value}
-                                                className="py-2 px-4 data-[highlighted]:bg-neutral-800 data-[highlighted]:text-neutral-200 cursor-pointer focus:outline-none"
+                                                disabled={mode.isDisabled}
+                                                className="py-2 px-4 w-[60vw] md:w-[15vw] data-[highlighted]:bg-neutral-800 data-[highlighted]:text-neutral-200 cursor-pointer focus:outline-none data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed"
                                             >
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-4">
                                                     <Icon
                                                         className={cn(
                                                             'h-4 w-4 flex-shrink-0',
