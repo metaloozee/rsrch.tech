@@ -105,7 +105,7 @@ export default function InputPanel({
                     ? 'fixed bottom-0'
                     : messages.length > 0
                       ? 'fixed bottom-0'
-                      : 'h-full flex-1 flex flex-col justify-center items-center'
+                      : 'h-screen flex-1 flex flex-col justify-center items-center'
             )}
         >
             {messages.length === 0 &&

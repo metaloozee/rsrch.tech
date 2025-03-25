@@ -23,9 +23,7 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en">
-            <body
-                className={`${geistSans.className} antialiased h-screen w-full bg-neutral-950 dark`}
-            >
+            <body className={`${geistSans.className} antialiased w-full bg-neutral-950 dark`}>
                 <ReactScan />
                 <PostHogProvider>
                     {children}
