@@ -104,7 +104,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                                     variants={rippleVariants}
                                     initial="initial"
                                     animate="animate"
-                                    transition={{ duration: 0.5 }}
+                                    transition={{ duration: 0.1 }}
                                 />
                             )}
                         </AnimatePresence>
@@ -115,7 +115,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                                 initial="initial"
                                 animate="animate"
                                 exit="exit"
-                                transition={{ duration: 0.2 }}
+                                transition={{ duration: 0.1 }}
                             >
                                 {copied ? (
                                     <CheckIcon className="text-muted-foreground size-3" />
@@ -131,7 +131,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
                                 initial={{ opacity: 0, y: 5 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -5 }}
-                                transition={{ duration: 0.2 }}
+                                transition={{ duration: 0.1 }}
                                 className="absolute right-0 top-full mt-1 text-xs bg-background/90 border border-border/50 shadow-sm rounded px-2 py-1 pointer-events-none z-20"
                             >
                                 Copied!

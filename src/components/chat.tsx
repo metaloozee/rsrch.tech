@@ -71,14 +71,9 @@ export default function Chat({
     };
 
     return (
-        <div
-            className={cn(
-                'h-full w-full flex flex-col',
-                isMobile ? 'justify-end' : 'justify-center'
-            )}
-        >
+        <div className={cn('h-full w-full')}>
             {messages.length > 0 && (
-                <ScrollArea className="w-full flex-grow overflow-y-auto">
+                <ScrollArea className="w-full flex-grow h-screen">
                     <ChatMessages
                         messages={messages}
                         isLoading={isLoading}

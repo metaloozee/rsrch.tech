@@ -29,7 +29,7 @@ export default function RootLayout({
                 <ReactScan />
                 <PostHogProvider>
                     {children}
-                    <Toaster position="top-center" />
+                    <Toaster richColors position="top-center" />
                 </PostHogProvider>
             </body>
         </html>

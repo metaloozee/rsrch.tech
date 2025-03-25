@@ -55,7 +55,7 @@ export function ChatMessages({
                 </div>
             )}
 
-            <div className="shrink-0 min-w-[24px] min-h-[24px]" />
+            <div className="mt-40 shrink-0 min-w-[24px] min-h-[24px]" />
         </div>
     );
 }

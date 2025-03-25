@@ -99,6 +99,14 @@ export default function InputPanel({
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.2 }}
+            className={cn(
+                'w-full',
+                isMobile
+                    ? 'fixed bottom-0'
+                    : messages.length > 0
+                      ? 'fixed bottom-0'
+                      : 'h-full flex-1 flex flex-col justify-center items-center'
+            )}
         >
             {messages.length === 0 &&
                 (isMobile ? (
@@ -106,7 +114,7 @@ export default function InputPanel({
                         initial={{ y: -10, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ delay: 0.2 }}
-                        className="flex justify-center items-center mb-40 w-full mx-auto"
+                        className="flex mb-80 justify-center items-end h-full w-full mx-auto"
                     >
                         <div className="flex gap-5 flex-col justify-center items-center">
                             <ScanSearchIcon className="size-10 text-neutral-700" />
