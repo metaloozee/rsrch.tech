@@ -29,7 +29,9 @@ export interface SearchResult {
     error?: any;
 }
 
-const model = mistral('mistral-small-latest');
+const smallModel = mistral('mistral-small-latest');
+const largeModel = mistral('mistral-large-latest');
+const analysisModel = mistral('mistral-small-latest');
 
 export async function POST(req: Request) {
     try {
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
         }
 
         const { object: goals } = await generateObject({
-            model,
+            model: smallModel,
             output: 'object',
             messages: convertToCoreMessages(messages),
             schema: z.object({
@@ -79,7 +81,7 @@ Response Mode: ${responseMode}
         return createDataStreamResponse({
             async execute(dataStream) {
                 const toolResult = await streamText({
-                    model: mistral('mistral-large-latest'),
+                    model: largeModel,
                     providerOptions: {
                         mistral: {
                             parallelToolCalls: true,
@@ -217,7 +219,7 @@ Critical Instructions:
                                 console.log(`Running Analysis for the goal: `, goal);
 
                                 const { text: result } = await generateText({
-                                    model,
+                                    model: analysisModel,
                                     providerOptions: {
                                         groq: {
                                             reasoningFormat: 'hidden',
@@ -263,7 +265,7 @@ The tool accepts the following schema: ${JSON.stringify(parameterSchema(toolCall
 Your job is to fix the arguments.
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
                         const { text: repairedText } = await generateText({
-                            model,
+                            model: smallModel,
                             messages: [
                                 {
                                     role: 'system',
@@ -306,7 +308,7 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                 });
 
                 const responseResult = await streamText({
-                    model,
+                    model: smallModel,
                     messages: [
                         ...convertToCoreMessages(messages),
                         {
