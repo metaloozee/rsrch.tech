@@ -220,7 +220,7 @@ export default function InputPanel({
                                                 key={mode.value}
                                                 value={mode.value}
                                                 disabled={mode.isDisabled}
-                                                className="py-2 px-4 w-[60vw] md:w-[15vw] data-[highlighted]:bg-neutral-800 data-[highlighted]:text-neutral-200 cursor-pointer focus:outline-none data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed"
+                                                className="py-2 px-4 w-[15rem] data-[highlighted]:bg-neutral-800 data-[highlighted]:text-neutral-200 cursor-pointer focus:outline-none data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed"
                                             >
                                                 <div className="flex items-center gap-4">
                                                     <Icon

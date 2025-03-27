@@ -13,7 +13,6 @@ import {
 import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
 import { groq } from '@ai-sdk/groq';
-import { cerebras } from '@ai-sdk/cerebras';
 import { z } from 'zod';
 import { tavily } from '@tavily/core';
 import { ResponseMode } from '@/components/chat-input';
@@ -87,13 +86,7 @@ Response Mode: ${responseMode}
                             parallelToolCalls: true,
                         },
                     },
-                    messages: [
-                        ...convertToCoreMessages(messages),
-                        {
-                            role: 'system',
-                            content: `Research Goals: \n\n ${JSON.stringify(goals)}`,
-                        },
-                    ],
+                    messages: [...convertToCoreMessages(messages)],
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 2: ', error);
                     },
@@ -102,6 +95,10 @@ You are a research assistant tasked with delivering comprehensive, precise, and 
 Your task is to investigate research goals by performing targeted web searches, evaluating the results, and synthesizing coherent answers.
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+<research-goals>
+${JSON.stringify(goals)}
+</research-goals>
 
 Available Tools: 
 1. \`web_search\`:
@@ -137,8 +134,12 @@ Critical Instructions:
                         web_search: tool({
                             parameters: z.object({
                                 plan: z.object({
-                                    goal: z.string(),
-                                    analysis: z.string(),
+                                    goal: z
+                                        .string()
+                                        .describe('MUST be extracted from <research-goals>'),
+                                    analysis: z
+                                        .string()
+                                        .describe('MUST be extracted from <research-goals>'),
                                     search_queries: z
                                         .array(z.string())
                                         .max(responseMode === 'concise' ? 2 : 3),
@@ -311,10 +312,6 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                     model: smallModel,
                     messages: [
                         ...convertToCoreMessages(messages),
-                        {
-                            role: 'system',
-                            content: `Research Goals: \n\n ${JSON.stringify(goals)}`,
-                        },
                         ...(await toolResult.response).messages,
                     ],
                     experimental_transform: smoothStream(),
@@ -326,7 +323,7 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                             ? `
 You are a high-level research assistant responsible for providing extremely concise, credible and precise information using the context from the previous steps (e.g., research planning, data retrieval).
 
-Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
 CRITICAL INSTRUCTION - LIMIT YOUR RESPONSE TO 3-4 SENTENCES MAXIMUM
 
@@ -353,7 +350,7 @@ Remember: Your entire response should be extremely brief (3-5 sentences) - this 
                             : `
 You are a high-level research assistant responsible for providing comprehensive, credible, and precise information using the context from previous steps (e.g., research planning, data retrieval).
 
-Current Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
 <research-goals>
 ${JSON.stringify(goals)}
