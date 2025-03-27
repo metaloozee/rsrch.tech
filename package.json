@@ -29,7 +29,6 @@
         "@t3-oss/env-nextjs": "^0.12.0",
         "@tavily/core": "^0.3.3",
         "@types/lodash": "^4.17.16",
-        "@vercel/analytics": "^1.5.0",
         "ai": "^4.1.54",
         "babel-plugin-react-compiler": "19.0.0-beta-3229e95-20250315",
         "class-variance-authority": "^0.7.1",

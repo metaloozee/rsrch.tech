@@ -43,13 +43,13 @@ TAVILY_API_KEY=your_tavily_api_key
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun i
 ```
 
 3. Run the development server:
 
 ```bash
-pnpm dev
+bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
