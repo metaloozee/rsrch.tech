@@ -9,6 +9,7 @@ import {
     MapIcon,
     ScrollText,
     SearchIcon,
+    ChevronDown,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -17,6 +18,7 @@ import {
     AccordionTrigger,
     AccordionContent,
 } from '@/components/ui/accordion';
+import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
 import { Message } from 'ai';
 
 export type ToolData = {
@@ -271,13 +273,35 @@ function renderResearchWorkflow(message: Message) {
 
     const researchGoals = steps.plan.data?.data || [];
 
-    const searchData = steps.search.data || {};
-
     const goalSearchMap = new Map();
+    const goalAnalysisMap = new Map();
 
     const searchAnnotations = ((message as any).annotations || []).filter(
         (a: any) => a.type === 'search' && a.state === 'result'
     );
+
+    const analysisAnnotations = ((message as any).annotations || []).filter(
+        (a: any) => a.type === 'analysis' && a.state === 'result'
+    );
+
+    analysisAnnotations.forEach((annotation: any) => {
+        if (annotation.goal) {
+            goalAnalysisMap.set(annotation.goal, annotation.data);
+        }
+    });
+
+    if (goalAnalysisMap.size === 0 && steps.analysis.data?.data) {
+        const analysisText = steps.analysis.data.data;
+        researchGoals.forEach((goal: any) => {
+            if (analysisText.includes(goal.goal)) {
+                goalAnalysisMap.set(goal.goal, analysisText);
+            }
+        });
+
+        if (goalAnalysisMap.size === 0 && researchGoals.length > 0) {
+            goalAnalysisMap.set('general', analysisText);
+        }
+    }
 
     searchAnnotations.forEach((annotation: any) => {
         const goal = annotation.goal;
@@ -430,10 +454,10 @@ function renderResearchWorkflow(message: Message) {
                                         </p>
                                     </div>
                                 ) : steps.search.result ? (
-                                    <div className="text-xs text-neutral-400 p-2 space-y-4">
+                                    <div className="text-xs text-neutral-400 py-2 space-y-4">
                                         {/* Display goals and their search results */}
                                         {researchGoals.length > 0 && (
-                                            <div className="space-y-4">
+                                            <div className="space-y-3">
                                                 {researchGoals.map((goal: any, index: number) => {
                                                     const goalData = goalSearchMap.get(
                                                         goal.goal
@@ -445,108 +469,167 @@ function renderResearchWorkflow(message: Message) {
                                                     return (
                                                         <div
                                                             key={index}
-                                                            className="p-3 border border-neutral-800 rounded-md space-y-3"
+                                                            className="border border-neutral-800 rounded-md"
                                                         >
-                                                            <div className="font-medium">
-                                                                {goal.goal}
-                                                            </div>
-
-                                                            {/* Search Queries for this goal */}
-                                                            {goalData.queries.length > 0 && (
-                                                                <div className="space-y-1">
-                                                                    <div className="text-[11px] font-medium text-neutral-400">
-                                                                        Search Queries
+                                                            <Disclosure>
+                                                                <DisclosureTrigger>
+                                                                    <div className="flex items-center justify-between p-3 w-full cursor-pointer hover:bg-neutral-800/30 transition-colors">
+                                                                        <div className="font-medium">
+                                                                            {goal.goal}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {goalData.queries
+                                                                                .length > 0 && (
+                                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
+                                                                                    {
+                                                                                        goalData
+                                                                                            .queries
+                                                                                            .length
+                                                                                    }{' '}
+                                                                                    {goalData
+                                                                                        .queries
+                                                                                        .length ===
+                                                                                    1
+                                                                                        ? 'query'
+                                                                                        : 'queries'}
+                                                                                </span>
+                                                                            )}
+                                                                            {Object.keys(
+                                                                                goalData.domainMap
+                                                                            ).length > 0 && (
+                                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
+                                                                                    {
+                                                                                        Object.keys(
+                                                                                            goalData.domainMap
+                                                                                        ).length
+                                                                                    }{' '}
+                                                                                    {Object.keys(
+                                                                                        goalData.domainMap
+                                                                                    ).length === 1
+                                                                                        ? 'source'
+                                                                                        : 'sources'}
+                                                                                </span>
+                                                                            )}
+                                                                            <ChevronDown className="h-3 w-3 text-neutral-400 transition-transform ui-expanded:rotate-180" />
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="flex flex-wrap gap-2">
-                                                                        {goalData.queries.map(
-                                                                            (
-                                                                                query: string,
-                                                                                qIndex: number
-                                                                            ) => (
-                                                                                <div
-                                                                                    key={qIndex}
-                                                                                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
-                                                                                >
-                                                                                    <SearchIcon className="size-2 text-neutral-400" />
-                                                                                    <span className="text-[11px]">
-                                                                                        {query}
-                                                                                    </span>
+                                                                </DisclosureTrigger>
+                                                                <DisclosureContent>
+                                                                    <div className="px-3 pb-3 pt-1 space-y-3">
+                                                                        {/* Search Queries for this goal */}
+                                                                        {goalData.queries.length >
+                                                                            0 && (
+                                                                            <div className="space-y-1">
+                                                                                <div className="text-[11px] font-medium text-neutral-400">
+                                                                                    Search Queries
                                                                                 </div>
-                                                                            )
+                                                                                <div className="flex flex-wrap gap-2">
+                                                                                    {goalData.queries.map(
+                                                                                        (
+                                                                                            query: string,
+                                                                                            qIndex: number
+                                                                                        ) => (
+                                                                                            <div
+                                                                                                key={
+                                                                                                    qIndex
+                                                                                                }
+                                                                                                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
+                                                                                            >
+                                                                                                <SearchIcon className="size-2 text-neutral-400" />
+                                                                                                <span className="text-[11px]">
+                                                                                                    {
+                                                                                                        query
+                                                                                                    }
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        )
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Sources/Domains for this goal */}
+                                                                        {Object.keys(
+                                                                            goalData.domainMap
+                                                                        ).length > 0 && (
+                                                                            <div className="space-y-1">
+                                                                                <div className="text-[11px] font-medium text-neutral-400">
+                                                                                    Sources
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-2">
+                                                                                    {Object.entries(
+                                                                                        goalData.domainMap
+                                                                                    )
+                                                                                        .sort(
+                                                                                            (
+                                                                                                a: [
+                                                                                                    string,
+                                                                                                    any,
+                                                                                                ],
+                                                                                                b: [
+                                                                                                    string,
+                                                                                                    any,
+                                                                                                ]
+                                                                                            ) =>
+                                                                                                b[1]
+                                                                                                    .count -
+                                                                                                a[1]
+                                                                                                    .count
+                                                                                        )
+                                                                                        .map(
+                                                                                            (
+                                                                                                [
+                                                                                                    domain,
+                                                                                                    info,
+                                                                                                ]: [
+                                                                                                    string,
+                                                                                                    any,
+                                                                                                ],
+                                                                                                idx: number
+                                                                                            ) => (
+                                                                                                <Link
+                                                                                                    key={
+                                                                                                        idx
+                                                                                                    }
+                                                                                                    target="_blank"
+                                                                                                    href={
+                                                                                                        info.url
+                                                                                                    }
+                                                                                                    className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                                                                                                >
+                                                                                                    <img
+                                                                                                        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                                                                                                        width={
+                                                                                                            12
+                                                                                                        }
+                                                                                                        height={
+                                                                                                            12
+                                                                                                        }
+                                                                                                        className="rounded-sm"
+                                                                                                        alt=""
+                                                                                                    />
+                                                                                                    <span className="text-[11px] font-medium truncate">
+                                                                                                        {
+                                                                                                            domain
+                                                                                                        }
+                                                                                                    </span>
+                                                                                                    {info.count >
+                                                                                                        1 && (
+                                                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
+                                                                                                            {
+                                                                                                                info.count
+                                                                                                            }
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </Link>
+                                                                                            )
+                                                                                        )}
+                                                                                </div>
+                                                                            </div>
                                                                         )}
                                                                     </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Sources/Domains for this goal */}
-                                                            {Object.keys(goalData.domainMap)
-                                                                .length > 0 && (
-                                                                <div className="space-y-1">
-                                                                    <div className="text-[11px] font-medium text-neutral-400">
-                                                                        Sources
-                                                                    </div>
-                                                                    <div className="flex flex-wrap gap-2">
-                                                                        {Object.entries(
-                                                                            goalData.domainMap
-                                                                        )
-                                                                            .sort(
-                                                                                (
-                                                                                    a: [
-                                                                                        string,
-                                                                                        any,
-                                                                                    ],
-                                                                                    b: [string, any]
-                                                                                ) =>
-                                                                                    b[1].count -
-                                                                                    a[1].count
-                                                                            )
-                                                                            .map(
-                                                                                (
-                                                                                    [
-                                                                                        domain,
-                                                                                        info,
-                                                                                    ]: [
-                                                                                        string,
-                                                                                        any,
-                                                                                    ],
-                                                                                    idx: number
-                                                                                ) => (
-                                                                                    <Link
-                                                                                        key={idx}
-                                                                                        target="_blank"
-                                                                                        href={
-                                                                                            info.url
-                                                                                        }
-                                                                                        className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
-                                                                                    >
-                                                                                        <img
-                                                                                            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
-                                                                                            width={
-                                                                                                12
-                                                                                            }
-                                                                                            height={
-                                                                                                12
-                                                                                            }
-                                                                                            className="rounded-sm"
-                                                                                            alt=""
-                                                                                        />
-                                                                                        <span className="text-[11px] font-medium truncate">
-                                                                                            {domain}
-                                                                                        </span>
-                                                                                        {info.count >
-                                                                                            1 && (
-                                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
-                                                                                                {
-                                                                                                    info.count
-                                                                                                }
-                                                                                            </span>
-                                                                                        )}
-                                                                                    </Link>
-                                                                                )
-                                                                            )}
-                                                                    </div>
-                                                                </div>
-                                                            )}
+                                                                </DisclosureContent>
+                                                            </Disclosure>
                                                         </div>
                                                     );
                                                 })}

@@ -57,7 +57,9 @@ export async function POST(req: Request) {
                                 z.object({
                                     goal: z.string(),
                                     analysis: z.string(),
-                                    search_queries: z.array(z.string()),
+                                    search_queries: z
+                                        .array(z.string())
+                                        .max(responseMode === 'research' ? 5 : 3),
                                 })
                             )
                             .min(1),
@@ -286,7 +288,9 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 3: ', error);
                     },
-                    prompt: `
+                    prompt:
+                        responseMode === 'research'
+                            ? `
 Your are an elite investigative journalist transitioning from analysis to writing. Your task is to craft a compelling, well-structured narrative based on your synthesized findings, adhering to the style and standards of The New York Times.
 
 Your task is to write a full investigative report based on the research topic, using the provided structured analysis and adhering strictly to the specified output format.
@@ -345,7 +349,21 @@ Target Output Structure:
 
 Context:
 ${JSON.stringify((await toolResult.response).messages)}
-                    `,
+                    `
+                            : `
+Your task is to generate a very brief summary, **no more than 5-6 sentences**, directly answering the core question implied by the research findings in the provided context.
+
+Instructions:
+1.  **Identify the Absolute Core Answer:** Extract only the most critical facts or conclusions from the \`Context\` that directly address the central theme or question.
+2.  **Synthesize into a Single Paragraph:** Combine these key points into a single, short paragraph of 5-6 sentences maximum.
+3.  **Be Direct and Factual:** State the findings clearly and objectively. Avoid introductory phrases, narrative flair, or section breaks.
+4.  **Cite Sources Inline:** Immediately follow each factual statement with its citation in the format \`[Source Title](URL)\`. Ensure all objective claims are cited using the exact URLs provided.
+5.  **Formatting:** Use simple markdown. Use '$' for inline math and '$$' for block math where necessary (avoid for currency, use "USD"). **Do not use headings, bullet points, or any other structuring elements.**
+
+Context:
+${JSON.stringify((await toolResult.response).messages)}
+
+Generate only the concise paragraph based on these instructions.`,
                 });
 
                 dataStream.writeMessageAnnotation({
