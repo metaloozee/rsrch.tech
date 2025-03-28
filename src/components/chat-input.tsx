@@ -51,10 +51,10 @@ const responseModes = [
     },
     {
         value: 'research',
-        label: 'Research',
+        label: 'Detailed',
         description: 'In-depth reports',
-        icon: BrainIcon,
-        color: 'text-amber-500',
+        icon: FileText,
+        color: 'text-green-500',
         isDisabled: false,
     },
 ];

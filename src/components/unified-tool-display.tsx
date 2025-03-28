@@ -473,11 +473,11 @@ function renderResearchWorkflow(message: Message) {
                                                         >
                                                             <Disclosure>
                                                                 <DisclosureTrigger>
-                                                                    <div className="flex items-center justify-between p-3 w-full cursor-pointer hover:bg-neutral-800/30 transition-colors">
-                                                                        <div className="font-medium">
+                                                                    <div className="flex gap-2 flex-wrap items-center justify-between p-3 w-full cursor-pointer hover:bg-neutral-800/30 transition-colors">
+                                                                        <div className="font-medium md:max-w-lg">
                                                                             {goal.goal}
                                                                         </div>
-                                                                        <div className="flex items-center gap-2">
+                                                                        <div className="flex flex-wrap items-center justify-center gap-2">
                                                                             {goalData.queries
                                                                                 .length > 0 && (
                                                                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
@@ -510,7 +510,6 @@ function renderResearchWorkflow(message: Message) {
                                                                                         : 'sources'}
                                                                                 </span>
                                                                             )}
-                                                                            <ChevronDown className="h-3 w-3 text-neutral-400 transition-transform ui-expanded:rotate-180" />
                                                                         </div>
                                                                     </div>
                                                                 </DisclosureTrigger>
