@@ -38,7 +38,7 @@ interface InputPanelProps {
     setResponseMode: (responseMode: ResponseMode) => void;
 }
 
-export type ResponseMode = 'concise' | 'descriptive' | 'research';
+export type ResponseMode = 'concise' | 'research';
 
 const responseModes = [
     {
@@ -50,20 +50,12 @@ const responseModes = [
         isDisabled: false,
     },
     {
-        value: 'descriptive',
-        label: 'Descriptive',
-        description: 'Detailed explanations',
-        icon: FileText,
-        color: 'text-emerald-500',
-        isDisabled: false,
-    },
-    {
         value: 'research',
         label: 'Research',
         description: 'In-depth reports',
         icon: BrainIcon,
         color: 'text-amber-500',
-        isDisabled: true,
+        isDisabled: false,
     },
 ];
 

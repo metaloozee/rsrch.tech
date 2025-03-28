@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
     convertToCoreMessages,
     createDataStreamResponse,
@@ -9,17 +10,19 @@ import {
     Message,
     generateObject,
 } from 'ai';
+import { ResponseMode } from '@/components/chat-input';
 
 import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
-import { groq } from '@ai-sdk/groq';
-import { z } from 'zod';
+import { openrouter } from '@openrouter/ai-sdk-provider';
 import { tavily } from '@tavily/core';
-import { ResponseMode } from '@/components/chat-input';
 
 export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
+
+const smallModel = mistral('mistral-small-latest');
+const largeModel = mistral('mistral-small-latest');
 
 export interface SearchResult {
     query: string;
@@ -28,147 +31,136 @@ export interface SearchResult {
     error?: any;
 }
 
-const smallModel = mistral('mistral-small-latest');
-const largeModel = mistral('mistral-large-latest');
-const analysisModel = mistral('mistral-small-latest');
-
 export async function POST(req: Request) {
     try {
         const {
             messages,
             id,
             responseMode,
-        }: { messages: Message[]; id: string; responseMode: ResponseMode } = await req.json();
+        }: {
+            messages: Message[];
+            id: string;
+            responseMode: ResponseMode;
+        } = await req.json();
+
         if (!messages || !id || !responseMode) {
             throw new Error('Invalid Body');
         }
 
-        const { object: goals } = await generateObject({
-            model: smallModel,
-            output: 'object',
-            messages: convertToCoreMessages(messages),
-            schema: z.object({
-                goals: z.array(
-                    z.object({
-                        goal: z.string(),
-                        analysis: z.string(),
-                    })
-                ),
-            }),
-            system: `
-You are a research goal extractor. Your task is to analyze the conversation history and extract specific research goals that need to be investigated.
-
-When analyzing the conversation:
-1. Identify the main question or request from the user and the messages
-2. Break down complex queries into distinct research goals
-3. Prioritize goals based on importance and logical sequence
-4. Format each goal as a clear, searchable objective
-5. For each goal, provide a detailed analysis of the research needed to answer the goal
-
-Important: 
-- Each goal should be specific enough to guide a web search but broad enough to capture relevant information. 
-- Do not make assumptions about facts - stick to extracting research needs from the conversation.
-- If the user's query is not clear, abort.
-- Generate 1-3 goals depending on the response mode.
-
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
-Response Mode: ${responseMode}
-
-`,
-        });
-
         return createDataStreamResponse({
             async execute(dataStream) {
-                const toolResult = await streamText({
-                    model: largeModel,
+                const { object: goals } = await generateObject({
+                    model: smallModel,
+                    schema: z.object({
+                        goals: z
+                            .array(
+                                z.object({
+                                    goal: z.string(),
+                                    analysis: z.string(),
+                                    search_queries: z.array(z.string()),
+                                })
+                            )
+                            .min(1),
+                    }),
+                    messages: convertToCoreMessages(messages),
+                    system: `
+You are an elite investigative journalist mapping out your strategy for a new investigation. Your first task is to deeply analyze the conversation history and define clear goals, search strategies, and analysis plans before initiating detailed research.
+
+Analyze the provided conversation history to understand its core components, nuances, and potential angles. Based on this analysis, define a set of specific goals.
+For each goal, generate multiple targeted search queries suitable for a search engine, and outline the key information or analysis required to achieve that goal later in the investigation.
+
+Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+
+INSTRUCTIONS:
+1. Analyze the Topic: 
+* Briefly break down the topic into its primary concepts, entities (people, organizations, places, etc.), keywords, and potential sub-topics.
+* Identify the implicit questions or areas needing investigation (e.g., What are the causes? What are the effects? Who are the key players? What is the history? What are the future trends? Are there any controversies?).
+* Consider the likely scope (timeframe, geography, etc.) suggested by the topic.
+
+2. Define Goals:
+* Formulate ${responseMode === 'research' ? '3-5' : '1-3'} distinct, actionable research goals that collectively cover the key aspects identified in your analysis. Goals should be specific enough to guide the research (e.g., "Goal: Understand the historical evolution of Topic X," "Goal: Identify the primary economic impacts of Policy Y on Sector Z," "Goal: Analyze expert predictions regarding the future adoption of Technology A," "Goal: Document the main arguments for and against Initiative B").
+
+3. Develop Strategy per Goal: For *each* defined goal:
+a. Generate Search Queries: Propose ${responseMode === 'research' ? '3-5' : '1-3'} specific search queries designed to find relevant information for *this goal*. These queries should be suitable for direct use with a search engine. Use varied keywords, synonyms, and consider boolean operators (AND, OR, NOT) or phrase searching ("...") where appropriate.
+b. Outline Analysis Plan: Specify *what kind* of information needs to be extracted or *what type of analysis* should be performed on the search results later to satisfy *this goal*.
+
+Respond only with the JSON Object while following the provided format / schema.
+                    `,
+                });
+
+                const totalSearchQueries = goals.goals.reduce(
+                    (total, goal) => total + goal.search_queries.length,
+                    0
+                );
+
+                dataStream.writeMessageAnnotation({
+                    type: 'plan',
+                    state: 'result',
+                    count: goals.goals.length,
+                    data: goals.goals,
+                    total_search_queries: totalSearchQueries,
+                });
+
+                const toolResult = await generateText({
+                    model: smallModel,
+                    maxSteps: goals.goals.length + 1,
                     providerOptions: {
                         mistral: {
                             parallelToolCalls: true,
                         },
                     },
-                    messages: [...convertToCoreMessages(messages)],
-                    onError: ({ error }) => {
-                        console.error('Error Occurred in Step 2: ', error);
-                    },
-                    system: `
-You are a research assistant tasked with delivering comprehensive, precise, and credible information based on a given research plan.
-Your task is to investigate research goals by performing targeted web searches, evaluating the results, and synthesizing coherent answers.
+                    prompt: `
+You are a highly efficient Research Operations Coordinator. 
+Your sole function in this step is to initiate research tasks by making calls to the \`web_search\` tool. 
+You will be given a structured \`Research Plan\` containing one or more research goals.
+For each goal defined in the \`Research Plan\`, you *must* make one call to the \`web_search\` tool.
 
+Instructions:
+1. Identify Goals: Carefully examine the \`Research Plan\` to identify the goals you must complete.
+2. Examine Arguments: For every object (goal) in the \`Research Plan\`:
+    * Identify the \`goal\`
+    * Identify the \`analysis\`
+    * Identify the \`search_queries\`
+3. Execute Tool Call: Immediately trigger the \`web_search\` tool using the extracted goal, analysis and search queries as parameters for that specific goal.
+4. Mandatory Action: You must make a separate \`web_search\` tool call for each and every goal object present in the \`Research Plan\`.
+
+<input>
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
-<research-goals>
-${JSON.stringify(goals)}
-</research-goals>
-
-Available Tools: 
-1. \`web_search\`:
-    * Description: Performs a web search and returns relevant results.
-    * Required: True
-2. \`analyze\`:
-    * Description: 
-        - Critically evaluates the results from the \`web_search\` tool for accuracy, relevance, and credibility. 
-        - Synthesizes the data into coherent answers for the respective research goal, noting any gaps or inconsistencies.
-    * Required: True
-
-Workflow: 
-* For each goal provided, you must adhere to the following steps iteratively.*
-1. Generate up-to 5 effective search queries that will yield relevant, diverse information.
-2. Call the \`web_search\` tool.
-3. Call the \`analyze\` tool.
-4. If the research gaps are too large or if responses stray from the goals, refine the queries and repeat the workflow.
-
-When evaluating sources:
-- Prioritize recent, authoritative sources
-- Note when information might be outdated or controversial
-- Identify consensus views vs. minority perspectives
-
-Critical Instructions:
-- You MUST ALWAYS use the \`web_search\` tool to perform web searches.
-- You MUST ALWAYS use the \`analyze\` tool to critically evaluate the results from the \`web_search\` tool.
-- For EACH research goal, you MUST have relevant information fetched, if not then you can re-run the tools.
-- You can make multiple tool calls as needed, but each must be purposeful.
-- ALWAYS run and review tool outputs before writing your final synthesis.
-- DO NOT describe your PROCESS, PLANNING STEPS, or tool execution NARRATIVES.
+Research Plan:
+${JSON.stringify(goals.goals)}
+</input>
                     `,
                     tools: {
                         web_search: tool({
                             parameters: z.object({
-                                plan: z.object({
-                                    goal: z
-                                        .string()
-                                        .describe('MUST be extracted from <research-goals>'),
-                                    analysis: z
-                                        .string()
-                                        .describe('MUST be extracted from <research-goals>'),
-                                    search_queries: z
-                                        .array(z.string())
-                                        .max(responseMode === 'concise' ? 2 : 3),
-                                }),
+                                goal: z.string(),
+                                analysis: z.string(),
+                                search_queries: z.array(z.string()),
                             }),
-                            execute: async ({ plan }, { toolCallId }) => {
+                            execute: async ({ goal, analysis, search_queries }, { toolCallId }) => {
                                 console.log(
-                                    `Running Search for the goal '${plan.goal}': `,
-                                    plan.search_queries
+                                    `Running Search for the goal '${goal}': `,
+                                    search_queries
                                 );
 
                                 dataStream.writeMessageAnnotation({
-                                    type: 'tool-call',
-                                    data: {
-                                        toolCallId,
-                                        toolName: 'web_search',
-                                        state: 'call',
-                                        args: JSON.stringify({ plan }),
-                                    },
+                                    type: 'search',
+                                    state: 'call',
+                                    query: search_queries[0],
+                                    goal: goal,
+                                    analysis: analysis,
+                                    search_queries: search_queries,
+                                    total_search_queries: totalSearchQueries,
                                 });
 
                                 const searchResults: SearchResult[] = [];
 
-                                const searchPromises = plan.search_queries.map(async (query) => {
+                                const searchPromises = search_queries.map(async (query) => {
                                     const res = await tvly.search(query, {
                                         maxResults: 2,
                                         searchDepth:
                                             responseMode === 'concise' ? 'basic' : 'advanced',
-                                        includeImages: true,
                                         includeAnswer: true,
                                     });
 
@@ -186,62 +178,42 @@ Critical Instructions:
                                 await Promise.all(searchPromises);
 
                                 dataStream.writeMessageAnnotation({
-                                    type: 'tool-call',
-                                    data: {
-                                        toolCallId,
-                                        toolName: 'web_search',
-                                        state: 'result',
-                                        args: JSON.stringify({ plan }),
-                                        result: JSON.stringify({
-                                            goal: plan.goal,
-                                            analysis: plan.analysis,
-                                            search_results: searchResults,
-                                        }),
-                                    },
+                                    type: 'search',
+                                    state: 'result',
+                                    count: searchResults.length,
+                                    total_queries: search_queries.length,
+                                    total_search_queries: totalSearchQueries,
+                                    queries: search_queries,
+                                    results: JSON.parse(JSON.stringify(searchResults)),
+                                    goal: goal,
+                                    analysis: analysis,
                                 });
 
-                                return searchResults;
-                            },
-                        }),
-                        analyze: tool({
-                            parameters: z.object({
-                                searchResults: z
-                                    .object({
-                                        query: z.string(),
-                                        result: z.any().optional(),
-                                        success: z.boolean(),
-                                        error: z.any().optional(),
-                                    })
-                                    .array(),
-                                goal: z.string(),
-                                analysis: z.string(),
-                            }),
-                            execute: async ({ searchResults, goal, analysis }, { toolCallId }) => {
-                                console.log(`Running Analysis for the goal: `, goal);
+                                dataStream.writeMessageAnnotation({
+                                    type: 'analysis',
+                                    state: 'call',
+                                });
 
-                                const { text: result } = await generateText({
-                                    model: analysisModel,
-                                    providerOptions: {
-                                        groq: {
-                                            reasoningFormat: 'hidden',
-                                        },
-                                    },
+                                const { text: searchAnalysis } = await generateText({
+                                    model: smallModel,
                                     prompt: `
-You are a research assistant tasked with delivering comprehensive, precise, and credible analysis on the provided search results for a specific research goal and its analysis.
-Your task is to critically evaluate the results from a previous step and synthesize the data into coherent answers for the respective research goal, noting any gaps or inconsistencies.
+You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
 
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+A tool was just executed to retrieve up-to-date information related to a specific goal. You must now analyze the returned list of results (URLs, titles, content) and recommend which ones seem most promising.
 
 Goal: ${goal}
-Analysis: ${analysis}
-
-<search-results>
-${JSON.stringify(searchResults)}
-</search-results>
+Analysis to Perform: ${analysis}
+Search Results: ${JSON.stringify(searchResults)}
                                     `,
                                 });
 
-                                return result;
+                                dataStream.writeMessageAnnotation({
+                                    type: 'analysis',
+                                    state: 'result',
+                                    data: searchAnalysis,
+                                });
+
+                                return searchAnalysis;
                             },
                         }),
                     },
@@ -254,7 +226,6 @@ ${JSON.stringify(searchResults)}
                         if (NoSuchToolError.isInstance(error)) {
                             return null;
                         }
-
                         console.log('Repairing the tool: ', toolCall.toolName);
 
                         const tool = tools[toolCall.toolName as keyof typeof tools];
@@ -304,95 +275,104 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                     },
                 });
 
-                toolResult.mergeIntoDataStream(dataStream, {
-                    experimental_sendFinish: false,
+                dataStream.writeMessageAnnotation({
+                    type: 'report',
+                    state: 'call',
                 });
 
-                const responseResult = await streamText({
-                    model: smallModel,
-                    messages: [
-                        ...convertToCoreMessages(messages),
-                        ...(await toolResult.response).messages,
-                    ],
+                const finalResponse = await streamText({
+                    model: largeModel,
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Step 3: ', error);
                     },
-                    system:
-                        responseMode === 'concise'
-                            ? `
-You are a high-level research assistant responsible for providing extremely concise, credible and precise information using the context from the previous steps (e.g., research planning, data retrieval).
+                    prompt: `
+Your are an elite investigative journalist transitioning from analysis to writing. Your task is to craft a compelling, well-structured narrative based on your synthesized findings, adhering to the style and standards of The New York Times.
 
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+Your task is to write a full investigative report based on the research topic, using the provided structured analysis and adhering strictly to the specified output format.
 
-CRITICAL INSTRUCTION - LIMIT YOUR RESPONSE TO 3-4 SENTENCES MAXIMUM
+Instructions:
+1.  Craft Headline & Overview: Create an attention-grabbing yet informative headline. Write a concise opening paragraph summarizing the report's core findings and significance.
+2.  Structure the Narrative: Organize the content according to the \`Target Output Structure\`. Use the sections provided as a guide.
+3.  Weave in Evidence: Integrate the key findings, facts, statistics, and expert quotes from your \`Structured Analysis\` seamlessly into the narrative. Ensure smooth transitions between points.
+4.  Maintain Style and Tone:
+    *   Write in a clear, objective, and engaging style, similar to The New York Times.
+    *   Explain complex concepts simply.
+    *   Maintain objectivity and present balanced perspectives, especially where conflicting viewpoints were identified. Attribute claims appropriately.
+5.  Populate All Sections: Ensure each section of the \`Target Output Structure\` is addressed using the information from the analysis.
+6.  Methodology Section: Briefly describe the research approach (based on the steps taken) and list the key sources used (referencing the analysis output).
 
-<research-goals>
-${JSON.stringify(goals)}
-</research-goals>
+Formatting Instructions:
+1. Use markdown formatting (including tables where useful) and clearly demarcate inline math with '$' and block math with '$$' (do not use '$' for USD amounts; use "USD" instead).
+2. Position [Source Title](URL) citations directly after *each sentence* or *paragraph* containing factual information.
+3. All objective claims must be supported by citations.
+4. Use clear, descriptive source titles that indicates the authority or type of source.
+5. Use the exact URL from the context without modification.
+6. Citations should be placed immediately after the statement they support, for example: "The Earth revolves around the Sun [Astronomy Today](https://example.com)."
 
-Primary Goal:
-- Provide the shortest possible clear answer to the user's query (3-5 sentences total).
-- NEVER use headings, bullet points, or any structured formatting.
-- Prioritize brevity over comprehensiveness - include only essential information.
-- Use simple language and short sentences.
-- When providing factual information, ALWAYS include citations in the format [Source Title](URL).
-- DO NOT use "$" sign for currencies, use "USD" instead.
+Target Output Structure:
+\`\`\`
+# {Compelling Headline}
+{Concise overview of key findings and significance}
 
-Citation Instructions:
-- Format citations as [Source Title](URL) directly after each sentence containing factual information.
-- Keep source titles as short as possible.
-- Use the exact URL from search results.
-- Do not create a separate citation section.
+## Background & Context
+{Historical context and importance}
+{Current landscape overview}
 
-Remember: Your entire response should be extremely brief (3-5 sentences) - this is not optional.
-`
-                            : `
-You are a high-level research assistant responsible for providing comprehensive, credible, and precise information using the context from previous steps (e.g., research planning, data retrieval).
+## Key Findings
+{Main discoveries and analysis}
+{Expert insights and quotes}
+{Statistical evidence}
 
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
+## Impact Analysis
+{Current implications}
+{Stakeholder perspective}
+{Industry/societal effects}
 
-<research-goals>
-${JSON.stringify(goals)}
-</research-goals>
+## Future Outlook
+{Emerging trends}
+{Expert predictions}
+{Potential challenges and opportunities}
 
-Primary Goals:
-- Strictly adhere to guidelines and focus on the user's needs.
-- Deliver responses that are accurate, detailed, and structured.
-- Avoid fabrications by sticking to provided context and including proper citations.
-- Follow all formatting rules without exception.
-- When providing factual information, include citations in the format [Source Title](URL).
+## Expert Insights
+{Notable quotes and analysis from industry leaders}
+{Contrasting viewpoints}
 
-Response Structure:
-1. Start with a clear and direct answer to the question.
-2. Follow up with a comprehensive explanation, structured like a technical blog post with appropriate headings.
-3. Use markdown formatting (including tables where useful) and clearly demarcate inline math with '$' and block math with '$$' (do not use '$' for USD amounts; use "USD" instead).
-4. In subsequent interactions that are not search queries or feedback-related, engage in a natural, conversational tone.
+## Sources & Methodology
+{List of primary sources with key contributions}
+{Research methodology overview}
+\`\`\`
 
-Citation Instructions:
-- Position [Source Title](URL) citations directly after each sentence or paragraph containing factual information.
-- All objective claims must be supported by citations.
-- Use clear, descriptive source titles that indicate the authority or type of source.
-- Citations must appear where information is presented, never in a separate section.
-- Maintain strict adherence to the [Source Title](URL) format.
-- Use the exact URL from search results without modification.
-- Citations should be placed immediately after the statement they support, for example: "The Earth revolves around the Sun [Astronomy Today](https://example.com)."
-
-Your responses should be well-organized, technically insightful, and directly address the query.
-`,
+Context:
+${JSON.stringify((await toolResult.response).messages)}
+                    `,
                 });
 
-                responseResult.consumeStream();
-
-                return responseResult.mergeIntoDataStream(dataStream, {
-                    experimental_sendStart: false,
-                    sendReasoning: false,
+                dataStream.writeMessageAnnotation({
+                    type: 'report',
+                    state: 'result',
                 });
+
+                finalResponse.consumeStream();
+                return finalResponse.mergeIntoDataStream(dataStream);
             },
         });
     } catch (error) {
         console.error(error);
         return new Response((error as Error).message, { status: 500 });
+    }
+}
+
+function normalizeUrl(url: string): string {
+    try {
+        return url
+            .trim()
+            .toLowerCase()
+            .replace(/\/$/, '')
+            .replace(/^https?:\/\//, '')
+            .replace(/^www\./, '');
+    } catch {
+        return url;
     }
 }
 
@@ -435,17 +415,4 @@ function deduplicateSearchResults(searchResults: any): any {
     }
 
     return dedupedResults;
-}
-
-function normalizeUrl(url: string): string {
-    try {
-        return url
-            .trim()
-            .toLowerCase()
-            .replace(/\/$/, '')
-            .replace(/^https?:\/\//, '')
-            .replace(/^www\./, '');
-    } catch {
-        return url;
-    }
 }

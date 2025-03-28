@@ -1,7 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { ListIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
+import {
+    ChartArea,
+    ListIcon,
+    Loader2Icon,
+    LoaderCircleIcon,
+    LoaderIcon,
+    MapIcon,
+    ScrollText,
+    SearchIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import {
     Accordion,
@@ -19,9 +27,18 @@ export type ToolData = {
     result?: any;
 };
 
+export type ResearchStep = {
+    id: string;
+    type: string;
+    state: 'processing' | 'complete';
+    content: string;
+    data?: any;
+};
+
 export type ResearchGoal = {
     goal: string;
     analysis?: string;
+    search_queries?: string[];
 };
 
 export type UnifiedToolDisplayProps = {
@@ -49,6 +66,9 @@ function extractToolData(message: Message): ToolData[] {
                         result: {
                             goal: args?.plan?.goal,
                             search_results: Array.isArray(result) ? result : [result],
+                            total_search_queries:
+                                args?.total_search_queries ||
+                                (part.toolInvocation as any)?.total_search_queries,
                         },
                     });
                 } else {
@@ -139,6 +159,38 @@ function extractToolData(message: Message): ToolData[] {
     return result;
 }
 
+function extractResearchSteps(message: Message): {
+    [key: string]: { call: boolean; result: boolean; data?: any };
+} {
+    const steps: { [key: string]: { call: boolean; result: boolean; data?: any } } = {
+        plan: { call: false, result: false },
+        search: { call: false, result: false },
+        analysis: { call: false, result: false },
+        report: { call: false, result: false },
+    };
+
+    if (message.role === 'assistant' && (message as any).annotations) {
+        const annotations = (message as any).annotations || [];
+
+        annotations.forEach((annotation: any) => {
+            if (annotation.type && annotation.state) {
+                const type = annotation.type;
+                if (steps[type]) {
+                    if (annotation.state === 'call' || annotation.state === 'partial-call') {
+                        steps[type].call = true;
+                        steps[type].data = annotation;
+                    } else if (annotation.state === 'result') {
+                        steps[type].result = true;
+                        steps[type].data = annotation;
+                    }
+                }
+            }
+        });
+    }
+
+    return steps;
+}
+
 function parseJsonIfString(value: any): any {
     if (typeof value !== 'string') return value;
 
@@ -186,12 +238,386 @@ function extractToolDataFromPart(part: any): ToolData | null {
 
 export const UnifiedToolDisplay = ({ message, className }: UnifiedToolDisplayProps) => {
     const tools = extractToolData(message);
+    const steps = extractResearchSteps(message);
+
+    const hasAnnotations = (message as any).annotations && (message as any).annotations.length > 0;
+    const hasResearchAnnotations =
+        hasAnnotations &&
+        (message as any).annotations.some((a: any) =>
+            ['plan', 'search', 'analysis', 'report'].includes(a.type)
+        );
+
+    if (hasResearchAnnotations || Object.values(steps).some((step) => step.call || step.result)) {
+        return renderResearchWorkflow(message);
+    }
+
     if (!tools || tools.length === 0) {
         return null;
     }
 
     return renderResearch(tools);
 };
+
+function renderResearchWorkflow(message: Message) {
+    const steps = extractResearchSteps(message);
+
+    const isPlanning = steps.plan.call && !steps.plan.result;
+    const isSearching = steps.search.call && !steps.search.result;
+    const isAnalyzing = steps.analysis.call && !steps.analysis.result;
+    const isGeneratingFinal = steps.report.call && !steps.report.result;
+
+    const goalCount = steps.plan.data?.count || 0;
+    const searchCount = steps.search.data?.count || 0;
+
+    const researchGoals = steps.plan.data?.data || [];
+
+    const searchData = steps.search.data || {};
+
+    const goalSearchMap = new Map();
+
+    const searchAnnotations = ((message as any).annotations || []).filter(
+        (a: any) => a.type === 'search' && a.state === 'result'
+    );
+
+    searchAnnotations.forEach((annotation: any) => {
+        const goal = annotation.goal;
+        const queries = annotation.queries || [];
+        const results = annotation.results || [];
+
+        if (!goalSearchMap.has(goal)) {
+            goalSearchMap.set(goal, {
+                goal,
+                queries,
+                results,
+                domainMap: {},
+            });
+        } else {
+            const existing = goalSearchMap.get(goal);
+            existing.queries = [...new Set([...existing.queries, ...queries])];
+            existing.results = [...existing.results, ...results];
+        }
+
+        const domainMap = goalSearchMap.get(goal).domainMap;
+        results.forEach((result: any) => {
+            if (result && result.result && result.result.results) {
+                result.result.results.forEach((source: any) => {
+                    try {
+                        if (source && source.url) {
+                            const sourceUrl = source.url;
+                            const domain = new URL(sourceUrl).hostname.replace('www.', '');
+
+                            if (!domainMap[domain]) {
+                                domainMap[domain] = {
+                                    count: 0,
+                                    url: sourceUrl,
+                                    title: source.title || domain,
+                                };
+                            }
+                            domainMap[domain].count++;
+                        }
+                    } catch (e) {
+                        console.error('Error processing URL:', e);
+                        if (!domainMap['unknown']) {
+                            domainMap['unknown'] = { count: 0, url: '#', title: 'Unknown Source' };
+                        }
+                        domainMap['unknown'].count++;
+                    }
+                });
+            }
+        });
+    });
+
+    return (
+        <div className="bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs mb-5">
+            <Accordion className="w-full">
+                <AccordionItem value="research-workflow">
+                    <AccordionTrigger className="p-4 cursor-pointer w-full">
+                        <div className="flex w-full justify-between items-center">
+                            <div className="flex gap-2 items-center">
+                                <MapIcon className="size-3" />
+                                <span className="font-medium">Research Workflow</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs opacity-80">
+                                {isPlanning || isSearching || isAnalyzing || isGeneratingFinal ? (
+                                    <>
+                                        <LoaderCircleIcon className="size-3 animate-spin" />
+                                        <span>Research in progress...</span>
+                                    </>
+                                ) : (
+                                    <span>Research completed</span>
+                                )}
+                            </div>
+                        </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="bg-neutral-950/50">
+                        <div className="space-y-4 p-4">
+                            {/* Planning Section */}
+                            <div className="flex flex-col space-y-2 border-b border-neutral-800 pb-4">
+                                <div className="flex w-full justify-between items-center">
+                                    <div className="flex gap-2 items-center">
+                                        <ListIcon className="size-3" />
+                                        <span className="font-medium">Research Plan</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs opacity-80">
+                                        {isPlanning ? (
+                                            <div className="inline-flex justify-center items-center gap-2 px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 text-[10px]">
+                                                <Loader2Icon className="size-3 animate-spin" />
+                                                IN PROGRESS
+                                            </div>
+                                        ) : steps.plan.result ? (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 text-[10px]">
+                                                {goalCount} {goalCount === 1 ? 'GOAL' : 'GOALS'}
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 text-[10px]">
+                                                PENDING
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Search Section */}
+                            <div className="flex flex-col space-y-2 border-b border-neutral-800 pb-4">
+                                <div className="flex w-full justify-between items-center">
+                                    <div className="flex gap-2 items-center">
+                                        <SearchIcon className="size-3" />
+                                        <span className="font-medium">Web Search</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs opacity-80">
+                                        {isSearching ? (
+                                            <div className="inline-flex justify-center items-center gap-2 px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 text-[10px]">
+                                                <Loader2Icon className="size-3 animate-spin" />
+                                                IN PROGRESS
+                                            </div>
+                                        ) : steps.search.result ? (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 text-[10px]">
+                                                {/* Get total queries directly from the global annotation */}
+                                                {steps.plan.data?.total_search_queries ||
+                                                    steps.search.data?.total_search_queries ||
+                                                    researchGoals?.reduce(
+                                                        (total: number, goal: ResearchGoal) =>
+                                                            total +
+                                                            (goal.search_queries?.length || 0),
+                                                        0
+                                                    ) ||
+                                                    searchCount}{' '}
+                                                {(steps.plan.data?.total_search_queries ||
+                                                    steps.search.data?.total_search_queries ||
+                                                    researchGoals?.reduce(
+                                                        (total: number, goal: ResearchGoal) =>
+                                                            total +
+                                                            (goal.search_queries?.length || 0),
+                                                        0
+                                                    ) ||
+                                                    searchCount) === 1
+                                                    ? 'SEARCH'
+                                                    : 'SEARCHES'}
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 text-[10px]">
+                                                PENDING
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                {isSearching ? (
+                                    <div className="flex items-center gap-2 text-xs p-2">
+                                        <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground" />
+                                        <p className="text-xs text-muted-foreground">
+                                            Searching the web for:{' '}
+                                            {steps.search.data?.query || 'relevant information...'}
+                                        </p>
+                                    </div>
+                                ) : steps.search.result ? (
+                                    <div className="text-xs text-neutral-400 p-2 space-y-4">
+                                        {/* Display goals and their search results */}
+                                        {researchGoals.length > 0 && (
+                                            <div className="space-y-4">
+                                                {researchGoals.map((goal: any, index: number) => {
+                                                    const goalData = goalSearchMap.get(
+                                                        goal.goal
+                                                    ) || {
+                                                        queries: goal.search_queries || [],
+                                                        domainMap: {},
+                                                    };
+
+                                                    return (
+                                                        <div
+                                                            key={index}
+                                                            className="p-3 border border-neutral-800 rounded-md space-y-3"
+                                                        >
+                                                            <div className="font-medium">
+                                                                {goal.goal}
+                                                            </div>
+
+                                                            {/* Search Queries for this goal */}
+                                                            {goalData.queries.length > 0 && (
+                                                                <div className="space-y-1">
+                                                                    <div className="text-[11px] font-medium text-neutral-400">
+                                                                        Search Queries
+                                                                    </div>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {goalData.queries.map(
+                                                                            (
+                                                                                query: string,
+                                                                                qIndex: number
+                                                                            ) => (
+                                                                                <div
+                                                                                    key={qIndex}
+                                                                                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
+                                                                                >
+                                                                                    <SearchIcon className="size-2 text-neutral-400" />
+                                                                                    <span className="text-[11px]">
+                                                                                        {query}
+                                                                                    </span>
+                                                                                </div>
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Sources/Domains for this goal */}
+                                                            {Object.keys(goalData.domainMap)
+                                                                .length > 0 && (
+                                                                <div className="space-y-1">
+                                                                    <div className="text-[11px] font-medium text-neutral-400">
+                                                                        Sources
+                                                                    </div>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {Object.entries(
+                                                                            goalData.domainMap
+                                                                        )
+                                                                            .sort(
+                                                                                (
+                                                                                    a: [
+                                                                                        string,
+                                                                                        any,
+                                                                                    ],
+                                                                                    b: [string, any]
+                                                                                ) =>
+                                                                                    b[1].count -
+                                                                                    a[1].count
+                                                                            )
+                                                                            .map(
+                                                                                (
+                                                                                    [
+                                                                                        domain,
+                                                                                        info,
+                                                                                    ]: [
+                                                                                        string,
+                                                                                        any,
+                                                                                    ],
+                                                                                    idx: number
+                                                                                ) => (
+                                                                                    <Link
+                                                                                        key={idx}
+                                                                                        target="_blank"
+                                                                                        href={
+                                                                                            info.url
+                                                                                        }
+                                                                                        className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                                                                                    >
+                                                                                        <img
+                                                                                            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                                                                                            width={
+                                                                                                12
+                                                                                            }
+                                                                                            height={
+                                                                                                12
+                                                                                            }
+                                                                                            className="rounded-sm"
+                                                                                            alt=""
+                                                                                        />
+                                                                                        <span className="text-[11px] font-medium truncate">
+                                                                                            {domain}
+                                                                                        </span>
+                                                                                        {info.count >
+                                                                                            1 && (
+                                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
+                                                                                                {
+                                                                                                    info.count
+                                                                                                }
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </Link>
+                                                                                )
+                                                                            )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="text-xs text-muted-foreground p-2">
+                                        Search phase will begin after planning
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Analysis Section */}
+                            <div className="flex flex-col space-y-2 border-b border-neutral-800 pb-4">
+                                <div className="flex w-full justify-between items-center">
+                                    <div className="flex gap-2 items-center">
+                                        <ChartArea className="size-3" />
+                                        <span className="font-medium">Analysis</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs opacity-80">
+                                        {isAnalyzing ? (
+                                            <div className="inline-flex justify-center items-center gap-2 px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 text-[10px]">
+                                                <Loader2Icon className="size-3 animate-spin" />
+                                                IN PROGRESS
+                                            </div>
+                                        ) : steps.analysis.result ? (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 text-[10px]">
+                                                COMPLETED
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 text-[10px]">
+                                                PENDING
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Report Generation Section */}
+                            <div className="flex flex-col space-y-2">
+                                <div className="flex w-full justify-between items-center">
+                                    <div className="flex gap-2 items-center">
+                                        <ScrollText className="size-3" />
+                                        <span className="font-medium">Report Generation</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs opacity-80">
+                                        {isGeneratingFinal ? (
+                                            <div className="inline-flex justify-center items-center gap-2 px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 text-[10px]">
+                                                <Loader2Icon className="size-3 animate-spin" />
+                                                IN PROGRESS
+                                            </div>
+                                        ) : steps.report.result ? (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 text-[10px]">
+                                                COMPLETED
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 text-[10px]">
+                                                PENDING
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+        </div>
+    );
+}
 
 function renderResearch(tools: ToolData[]) {
     const searchTools = tools.filter((tool) => tool.toolName === 'web_search');
@@ -203,39 +629,45 @@ function renderResearch(tools: ToolData[]) {
     const resultTools = searchTools.filter((tool) => tool.state === 'result' && tool.result);
     const isLoading = searchTools.some((tool) => tool.state === 'call');
 
+    const totalSearchQueriesFromTools =
+        resultTools.length > 0 ? resultTools[0]?.result?.total_search_queries : undefined;
+
     if (isLoading || resultTools.length === 0) {
         return (
-            <Accordion className="bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs mb-5">
-                <AccordionItem value="research" className="border-none">
-                    <AccordionTrigger className="p-4 cursor-pointer w-full">
-                        <div className="flex w-full justify-between items-center">
-                            <div className="flex gap-2 items-center">
-                                <ListIcon className="size-3" />
-                                <span className="font-medium">Research</span>
+            <div className="bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs mb-5">
+                <Accordion className="w-full">
+                    <AccordionItem value="research" className="border-none">
+                        <AccordionTrigger className="p-4 cursor-pointer w-full">
+                            <div className="flex w-full justify-between items-center">
+                                <div className="flex gap-2 items-center">
+                                    <ListIcon className="size-3" />
+                                    <span className="font-medium">Research</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs opacity-80">
+                                    <LoaderCircleIcon className="size-3 animate-spin" />
+                                    <span>
+                                        {isLoading ? 'Searching...' : 'Processing results...'}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2 text-xs opacity-80">
-                                <LoaderCircleIcon className="size-3 animate-spin" />
-                                <span>{isLoading ? 'Searching...' : 'Processing results...'}</span>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <div className="flex flex-col items-center justify-center p-4 gap-2">
+                                <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
+                                <p className="text-xs text-muted-foreground">
+                                    {isLoading
+                                        ? 'Searching the web for relevant information...'
+                                        : 'Processing search results...'}
+                                </p>
                             </div>
-                        </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                        <div className="flex flex-col items-center justify-center p-4 gap-2">
-                            <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
-                            <p className="text-xs text-muted-foreground">
-                                {isLoading
-                                    ? 'Searching the web for relevant information...'
-                                    : 'Processing search results...'}
-                            </p>
-                        </div>
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            </div>
         );
     }
 
     try {
-        // Process all search results
         const allGoals: {
             goal: string;
             queries: string[];
@@ -292,102 +724,129 @@ function renderResearch(tools: ToolData[]) {
         }
 
         const totalGoals = allGoals.length;
-        const totalQueries = allGoals.reduce((sum, goal) => sum + goal.queries.length, 0);
+
+        const totalQueries =
+            totalSearchQueriesFromTools ||
+            allGoals.reduce((sum, goal) => {
+                return sum + goal.queries.length;
+            }, 0);
 
         const allSourcesSet = new Set<string>();
         allGoals.forEach((goal) => {
-            Object.entries(goal.domainMap).forEach(([domain]) => allSourcesSet.add(domain));
+            goal.sources.forEach((source) => {
+                if (source.result && source.result.results) {
+                    source.result.results.forEach((result: any) => {
+                        if (result?.url) {
+                            try {
+                                const domain = new URL(result.url).hostname.replace('www.', '');
+                                allSourcesSet.add(domain);
+                            } catch (e) {
+                                allSourcesSet.add('unknown');
+                            }
+                        }
+                    });
+                }
+            });
         });
         const totalSources = allSourcesSet.size;
 
         return (
-            <Accordion className="bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs mb-5">
-                <AccordionItem value="research" className="border-none">
-                    <AccordionTrigger className="p-4 cursor-pointer w-full">
-                        <div className="flex w-full justify-between items-center">
-                            <div className="flex gap-2 items-center">
-                                <ListIcon className="size-3" />
-                                <span className="font-medium">Research</span>
-                            </div>
-                            <div className="flex flex-shrink-0 gap-2 text-xs opacity-80 ml-auto">
-                                <span>
-                                    {totalGoals} {totalGoals === 1 ? 'goal' : 'goals'}
-                                </span>
-                                <span>•</span>
-                                <span>{totalQueries} queries</span>
-                                <span>•</span>
-                                <span>
-                                    {totalSources} {totalSources === 1 ? 'source' : 'sources'}
-                                </span>
-                            </div>
-                        </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                        <div className="space-y-6 p-4">
-                            {allGoals.map((goalData, goalIndex) => (
-                                <div key={goalIndex} className="space-y-3">
-                                    {goalIndex > 0 && <hr className="border-neutral-800 my-4" />}
-
-                                    <div className="flex items-center gap-2">
-                                        <div className="font-medium">{goalData.goal}</div>
-                                    </div>
-
-                                    <div className="w-full flex flex-col gap-3">
-                                        <div className="w-full">
-                                            <div className="text-xs font-medium mb-2">
-                                                Search Queries
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {goalData.queries.map((query, idx) => (
-                                                    <div
-                                                        key={idx}
-                                                        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
-                                                    >
-                                                        <SearchIcon className="size-3 text-neutral-400" />
-                                                        <span className="text-xs">{query}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="w-full">
-                                            <div className="text-xs font-medium mb-2">Sources</div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {Object.entries(goalData.domainMap)
-                                                    .sort((a, b) => b[1].count - a[1].count)
-                                                    .map(([domain, info], idx) => (
-                                                        <Link
-                                                            key={idx}
-                                                            target="_blank"
-                                                            href={info.url}
-                                                            className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
-                                                        >
-                                                            <img
-                                                                src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
-                                                                width={12}
-                                                                height={12}
-                                                                className="rounded-sm"
-                                                                alt=""
-                                                            />
-                                                            <span className="text-xs font-medium truncate">
-                                                                {domain}
-                                                            </span>
-                                                            {info.count > 1 && (
-                                                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
-                                                                    {info.count}
-                                                                </span>
-                                                            )}
-                                                        </Link>
-                                                    ))}
-                                            </div>
-                                        </div>
-                                    </div>
+            <div className="bg-neutral-900 rounded-lg font-light text-muted-foreground text-xs mb-5">
+                <Accordion className="w-full">
+                    <AccordionItem value="research" className="border-none">
+                        <AccordionTrigger className="p-4 cursor-pointer w-full">
+                            <div className="flex w-full justify-between items-center">
+                                <div className="flex gap-2 items-center">
+                                    <ListIcon className="size-3" />
+                                    <span className="font-medium">Research</span>
                                 </div>
-                            ))}
-                        </div>
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
+                                <div className="flex flex-shrink-0 gap-2 text-xs opacity-80 ml-auto">
+                                    <span>
+                                        {totalGoals} {totalGoals === 1 ? 'goal' : 'goals'}
+                                    </span>
+                                    <span>•</span>
+                                    <span>{totalQueries} queries</span>
+                                    <span>•</span>
+                                    <span>
+                                        {totalSources} {totalSources === 1 ? 'source' : 'sources'}
+                                    </span>
+                                </div>
+                            </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <div className="space-y-6 p-4">
+                                {allGoals.map((goalData, goalIndex) => (
+                                    <div key={goalIndex} className="space-y-3">
+                                        {goalIndex > 0 && (
+                                            <hr className="border-neutral-800 my-4" />
+                                        )}
+
+                                        <div className="flex items-center gap-2">
+                                            <div className="font-medium">{goalData.goal}</div>
+                                        </div>
+
+                                        <div className="w-full flex flex-col gap-3">
+                                            <div className="w-full">
+                                                <div className="text-xs font-medium mb-2">
+                                                    Search Queries
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {goalData.queries.map((query, idx) => (
+                                                        <div
+                                                            key={idx}
+                                                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
+                                                        >
+                                                            <SearchIcon className="size-3 text-neutral-400" />
+                                                            <span className="text-xs">{query}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="w-full">
+                                                <div className="text-xs font-medium mb-2">
+                                                    Sources
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {Object.entries(goalData.domainMap)
+                                                        .sort(
+                                                            (a: [string, any], b: [string, any]) =>
+                                                                b[1].count - a[1].count
+                                                        )
+                                                        .map(([domain, info], idx) => (
+                                                            <Link
+                                                                key={idx}
+                                                                target="_blank"
+                                                                href={info.url}
+                                                                className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                                                            >
+                                                                <img
+                                                                    src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                                                                    width={12}
+                                                                    height={12}
+                                                                    className="rounded-sm"
+                                                                    alt=""
+                                                                />
+                                                                <span className="text-xs font-medium truncate">
+                                                                    {domain}
+                                                                </span>
+                                                                {info.count > 1 && (
+                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
+                                                                        {info.count}
+                                                                    </span>
+                                                                )}
+                                                            </Link>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            </div>
         );
     } catch (error) {
         console.error('Error rendering research:', error);

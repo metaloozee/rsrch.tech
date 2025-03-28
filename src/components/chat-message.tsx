@@ -173,7 +173,7 @@ const markdownComponents = {
     td: ({ children }: any) => <TableCell className="p-3">{children}</TableCell>,
     p: ({ children }: any) => <p className="leading-7 mb-4 text-neutral-200">{children}</p>,
     h1: ({ children }: any) => (
-        <h1 className="text-3xl font-bold mt-8 mb-4 text-white">{children}</h1>
+        <h1 className="text-3xl font-bold mb-6 mt-4 text-white">{children}</h1>
     ),
     h2: ({ children }: any) => (
         <h2 className="text-2xl font-semibold mt-6 mb-3 text-white">{children}</h2>
