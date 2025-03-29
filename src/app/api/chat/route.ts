@@ -15,6 +15,7 @@ import { ResponseMode } from '@/components/chat-input';
 import { env } from '@/lib/env';
 import { mistral } from '@ai-sdk/mistral';
 import { openrouter } from '@openrouter/ai-sdk-provider';
+import { groq } from '@ai-sdk/groq';
 import { tavily } from '@tavily/core';
 
 export const maxDuration = 60;
@@ -291,74 +292,68 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
                     prompt:
                         responseMode === 'research'
                             ? `
-Your are an elite investigative journalist transitioning from analysis to writing. Your task is to craft a compelling, well-structured narrative based on your synthesized findings, adhering to the style and standards of The New York Times.
+You are an elite investigative journalist transitioning from analysis to writing. Your task is to craft a compelling, well-structured narrative based on your synthesized findings, adhering to the style and standards of The New York Times.
 
-Your task is to write a full investigative report based on the research topic, using the provided structured analysis and adhering strictly to the specified output format.
+Your goal is to write a full investigative report based on the research topic, using the provided context. Critically, you must first **determine the most logical and informative structure** for this *specific* report based on the nature of the findings, then write the report following that structure. Do **not** use a generic, predefined template if the context suggests a different organization would be clearer or more impactful.
 
 Instructions:
-1.  Craft Headline & Overview: Create an attention-grabbing yet informative headline. Write a concise opening paragraph summarizing the report's core findings and significance.
-2.  Structure the Narrative: Organize the content according to the \`Target Output Structure\`. Use the sections provided as a guide.
-3.  Weave in Evidence: Integrate the key findings, facts, statistics, and expert quotes from your \`Structured Analysis\` seamlessly into the narrative. Ensure smooth transitions between points.
-4.  Maintain Style and Tone:
-    *   Write in a clear, objective, and engaging style, similar to The New York Times.
-    *   Explain complex concepts simply.
-    *   Maintain objectivity and present balanced perspectives, especially where conflicting viewpoints were identified. Attribute claims appropriately.
-5.  Populate All Sections: Ensure each section of the \`Target Output Structure\` is addressed using the information from the analysis.
-6.  Methodology Section: Briefly describe the research approach (based on the steps taken) and list the key sources used (referencing the analysis output).
+
+1.  Analyze Context & Determine Structure:
+    *   Carefully review the research topic and the findings presented in the \`Context\`.
+    *   Based on this analysis, decide on the most effective structure for the report. Consider organizational patterns like:
+        *   Thematic: Grouping findings by key themes or arguments.
+        *   Chronological: Presenting events or developments over time.
+        *   Stakeholder-Based: Analyzing impacts or perspectives for different groups.
+        *   Problem/Solution: Outlining a challenge and exploring potential answers.
+        *   Geographical: Focusing on different locations or regions.
+        *   Key Questions: Structuring the report around answering central research questions.
+    *   The structure should facilitate a clear, logical narrative flow appropriate for the specific subject matter.
+
+2.  Craft Headline & Overview:
+    *   Create an attention-grabbing yet informative headline reflecting the core subject.
+    *   Write a concise opening paragraph (lede) summarizing the report's most crucial findings and their significance. This should immediately tell the reader what the story is about and why it matters.
+
+3.  Develop the Report Body:
+    *   Organize the main content according to the structure you determined in Step 1.
+    *   Use clear and descriptive Markdown headings (\`## Section Title\`) for each major section. These headings should reflect the specific content of the section, not generic placeholders unless truly appropriate.
+    *   Weave the key findings, facts, statistics, expert quotes, and conflicting viewpoints from the \`Context\` seamlessly into the narrative within the relevant sections. Ensure smooth transitions between points and sections.
+
+4.  Maintain Journalistic Style and Tone:
+    *   Write in a clear, objective, and engaging style, mirroring The New York Times.
+    *   Explain complex concepts simply without sacrificing accuracy.
+    *   Maintain objectivity. Present balanced perspectives where conflicting viewpoints exist, attributing claims appropriately. Use neutral language.
+
+5.  Integrate Evidence & Citations:
+    *   Ensure *all* objective claims, facts, statistics, and direct quotes are supported by inline citations immediately following the sentence or paragraph they support.
+    *   Format citations as: \`[Source Title](URL)\`. Use clear, descriptive source titles and the exact URL provided in the \`Context\`.
+
+6.  Craft a Concluding Section:
+    *   Conclude the report with a dedicated \`## Conclusion\` section.
+    *   This section should synthesize the main points and key takeaways from the report.
+    *   Briefly reiterate the significance of the findings.
+    *   Offer a final perspective on the broader implications, potential future developments, or remaining unanswered questions related to the topic, based *only* on the information presented in the report and the provided \`Context\`. Avoid introducing new information not covered earlier.
 
 Formatting Instructions:
-1. Use markdown formatting (including tables where useful) and clearly demarcate inline math with '$' and block math with '$$' (do not use '$' for USD amounts; use "USD" instead).
-2. Position [Source Title](URL) citations directly after *each sentence* or *paragraph* containing factual information.
-3. All objective claims must be supported by citations.
-4. Use clear, descriptive source titles that indicates the authority or type of source.
-5. Use the exact URL from the context without modification.
-6. Citations should be placed immediately after the statement they support, for example: "The Earth revolves around the Sun [Astronomy Today](https://example.com)."
 
-Target Output Structure:
-\`\`\`
-# {Compelling Headline}
-{Concise overview of key findings and significance}
-
-## Background & Context
-{Historical context and importance}
-{Current landscape overview}
-
-## Key Findings
-{Main discoveries and analysis}
-{Expert insights and quotes}
-{Statistical evidence}
-
-## Impact Analysis
-{Current implications}
-{Stakeholder perspective}
-{Industry/societal effects}
-
-## Future Outlook
-{Emerging trends}
-{Expert predictions}
-{Potential challenges and opportunities}
-
-## Expert Insights
-{Notable quotes and analysis from industry leaders}
-{Contrasting viewpoints}
-
-## Sources & Methodology
-{List of primary sources with key contributions}
-{Research methodology overview}
-\`\`\`
+1.  Use Markdown formatting throughout. Use tables where appropriate for presenting data clearly.
+2.  Clearly demarcate inline math with \`$\` and block math with \`$$\`. Do not use \`$\` for currency; use standard currency codes (e.g., USD, EUR).
+3.  Position \`[Source Title](URL)\` citations *directly after* the sentence or paragraph containing the factual information they support. Every factual claim needs a citation.
+4.  Use clear, descriptive source titles that indicate the authority or type of source (e.g., "Official Census Report", "Interview with Dr. Jane Smith", "Peer-Reviewed Study in Nature").
+5.  Use the exact URL provided in the \`Context\` without modification.
 
 Context:
+
 ${JSON.stringify((await toolResult.response).messages)}
                     `
                             : `
 Your task is to generate a very brief summary, **no more than 5-6 sentences**, directly answering the core question implied by the research findings in the provided context.
 
 Instructions:
-1.  **Identify the Absolute Core Answer:** Extract only the most critical facts or conclusions from the \`Context\` that directly address the central theme or question.
-2.  **Synthesize into a Single Paragraph:** Combine these key points into a single, short paragraph of 5-6 sentences maximum.
-3.  **Be Direct and Factual:** State the findings clearly and objectively. Avoid introductory phrases, narrative flair, or section breaks.
-4.  **Cite Sources Inline:** Immediately follow each factual statement with its citation in the format \`[Source Title](URL)\`. Ensure all objective claims are cited using the exact URLs provided.
-5.  **Formatting:** Use simple markdown. Use '$' for inline math and '$$' for block math where necessary (avoid for currency, use "USD"). **Do not use headings, bullet points, or any other structuring elements.**
+1.  Identify the Absolute Core Answer: Extract only the most critical facts or conclusions from the \`Context\` that directly address the central theme or question.
+2.  Synthesize into a Single Paragraph: Combine these key points into a single, short paragraph of 5-6 sentences maximum.
+3.  Be Direct and Factual: State the findings clearly and objectively. Avoid introductory phrases, narrative flair, or section breaks.
+4.  Cite Sources Inline: Immediately follow each factual statement with its citation in the format \`[Source Title](URL)\`. Ensure all objective claims are cited using the exact URLs provided.
+5.  Formatting: Use simple markdown. Use '$' for inline math and '$$' for block math where necessary (avoid for currency, use "USD"). **Do not use headings, bullet points, or any other structuring elements.**
 
 Context:
 ${JSON.stringify((await toolResult.response).messages)}

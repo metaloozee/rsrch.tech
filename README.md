@@ -16,7 +16,7 @@ This project is under active development. Below are some of the planned improvem
 - [x] ~~Performance Optimization~~
 - [x] ~~Add citation management~~
 - [x] ~~Improve mobile responsiveness~~
-- [ ] Research mode
+- [x] ~~Research mode~~
 - [ ] User Authentication
 - [ ] Persistent history
 
