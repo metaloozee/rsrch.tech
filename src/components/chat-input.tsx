@@ -23,11 +23,9 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { TextMorph } from '@/components/ui/text-morph';
+import { useForm, SubmitHandler } from 'react-hook-form';
 
 interface InputPanelProps {
-    input: string;
-    handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-    handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
     isLoading: boolean;
     messages: Message[];
     setMessages: (messages: Message[]) => void;
@@ -59,10 +57,11 @@ const responseModes = [
     },
 ];
 
+interface FormValues {
+    prompt: string;
+}
+
 export default function InputPanel({
-    input,
-    handleInputChange,
-    handleSubmit,
     isLoading,
     messages,
     setMessages,
@@ -74,11 +73,10 @@ export default function InputPanel({
 }: InputPanelProps) {
     const isMobile = useMobileView();
 
-    const inputRef = useRef<HTMLTextAreaElement>(null);
-    const isFirstMessage = useRef(true);
-
     const [isComposing, setIsComposing] = useState(false);
     const [enterDisabled, setEnterDisabled] = useState(false);
+
+    const { register, handleSubmit: handleRHFSubmit, reset } = useForm<FormValues>();
 
     const handleCompositionStart = () => setIsComposing(true);
     const handleCompositionEnd = () => {
@@ -88,6 +86,17 @@ export default function InputPanel({
         setTimeout(() => {
             setEnterDisabled(false);
         }, 300);
+    };
+
+    const onSubmit: SubmitHandler<FormValues> = (data) => {
+        const trimmedPrompt = data.prompt.trim();
+        if (trimmedPrompt.length === 0) return;
+
+        append({
+            role: 'user',
+            content: trimmedPrompt,
+        });
+        reset();
     };
 
     return (
@@ -133,7 +142,7 @@ export default function InputPanel({
                     </motion.div>
                 ))}
 
-            <form onSubmit={handleSubmit} className="max-w-3xl w-full mx-auto">
+            <form onSubmit={handleRHFSubmit(onSubmit)} className="max-w-3xl w-full mx-auto">
                 <div
                     className={cn(
                         'relative flex flex-col w-full p-4 gap-2 border border-neutral-700/50 shadow-lg bg-neutral-900 focus-within:border-accent hover:border-accent transition-all duration-300',
@@ -148,15 +157,12 @@ export default function InputPanel({
                         autoFocus
                         onCompositionStart={handleCompositionStart}
                         onCompositionEnd={handleCompositionEnd}
-                        ref={inputRef}
-                        name="input"
                         placeholder={
                             messages.length > 0 ? 'Ask follow-up...' : 'Ask me anything...'
                         }
                         spellCheck={true}
-                        value={input}
                         className="resize-none placeholder:text-neutral-500 w-full bg-transparent ring-0 border-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-                        onChange={handleInputChange}
+                        {...register('prompt')}
                         onKeyDown={(e) => {
                             if (
                                 e.key === 'Enter' &&
@@ -164,14 +170,13 @@ export default function InputPanel({
                                 !isComposing &&
                                 !enterDisabled
                             ) {
-                                if (input.trim().length === 0) {
+                                const currentValue = (e.target as HTMLTextAreaElement).value;
+                                if (currentValue.trim().length === 0) {
                                     e.preventDefault();
                                     return;
                                 }
-
                                 e.preventDefault();
-                                const textarea = e.target as HTMLTextAreaElement;
-                                textarea.form?.requestSubmit();
+                                handleRHFSubmit(onSubmit)();
                             }
                         }}
                     />

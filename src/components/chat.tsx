@@ -88,9 +88,6 @@ export default function Chat({
             )}
 
             <InputPanel
-                input={input}
-                handleInputChange={handleInputChange}
-                handleSubmit={handleSubmit}
                 isLoading={isLoading}
                 messages={messages}
                 setMessages={setMessages}
