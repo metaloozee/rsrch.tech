@@ -25,6 +25,9 @@ const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 const smallModel = mistral('mistral-small-latest');
 const largeModel = mistral('mistral-large-latest');
 
+// const smallModel = groq("llama-3.3-70b-versatile")
+// const largeModel = groq("deepseek-r1-distill-llama-70b")
+
 // const smallModel = openrouter('google/gemini-2.0-flash-001');
 // const largeModel = openrouter('google/gemini-2.5-pro-exp-03-25:free');
 
@@ -53,7 +56,13 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                const { object: goals } = await generateObject({
+                // --- Stage 1: Goal Generation ---
+                dataStream.writeMessageAnnotation({
+                    type: 'plan',
+                    state: 'call',
+                });
+
+                const { object: goalsData } = await generateObject({
                     model: smallModel,
                     schema: z.object({
                         goals: z
@@ -62,8 +71,13 @@ export async function POST(req: Request) {
                                     goal: z.string(),
                                     analysis: z.string(),
                                     search_queries: z
-                                        .array(z.string())
-                                        .max(responseMode === 'research' ? 5 : 3),
+                                        .array(
+                                            z.object({
+                                                topic: z.enum(['general', 'news', 'finance']),
+                                                query: z.string(),
+                                            })
+                                        )
+                                        .min(1),
                                 })
                             )
                             .min(1),
@@ -82,6 +96,7 @@ INSTRUCTIONS:
 * Briefly break down the topic into its primary concepts, entities (people, organizations, places, etc.), keywords, and potential sub-topics.
 * Identify the implicit questions or areas needing investigation (e.g., What are the causes? What are the effects? Who are the key players? What is the history? What are the future trends? Are there any controversies?).
 * Consider the likely scope (timeframe, geography, etc.) suggested by the topic.
+* Consider the type of document that is most likely to contain the information you need to achieve the goal.
 
 2. Define Goals:
 * Formulate ${responseMode === 'research' ? '3-5' : '1-3'} distinct, actionable research goals that collectively cover the key aspects identified in your analysis. Goals should be specific enough to guide the research (e.g., "Goal: Understand the historical evolution of Topic X," "Goal: Identify the primary economic impacts of Policy Y on Sector Z," "Goal: Analyze expert predictions regarding the future adoption of Technology A," "Goal: Document the main arguments for and against Initiative B").
@@ -94,7 +109,7 @@ Respond only with the JSON Object while following the provided format / schema.
                     `,
                 });
 
-                const totalSearchQueries = goals.goals.reduce(
+                const totalSearchQueries = goalsData.goals.reduce(
                     (total, goal) => total + goal.search_queries.length,
                     0
                 );
@@ -102,185 +117,142 @@ Respond only with the JSON Object while following the provided format / schema.
                 dataStream.writeMessageAnnotation({
                     type: 'plan',
                     state: 'result',
-                    count: goals.goals.length,
-                    data: goals.goals,
+                    count: goalsData.goals.length,
+                    data: goalsData.goals,
                     total_search_queries: totalSearchQueries,
                 });
 
-                const toolResult = await generateText({
-                    model: smallModel,
-                    maxSteps: goals.goals.length + 1,
-                    providerOptions: {
-                        mistral: {
-                            parallelToolCalls: true,
-                        },
-                    },
-                    prompt: `
-You are a highly efficient Research Operations Coordinator. 
-Your sole function in this step is to initiate research tasks by making calls to the \`web_search\` tool. 
-You will be given a structured \`Research Plan\` containing one or more research goals.
-For each goal defined in the \`Research Plan\`, you *must* make one call to the \`web_search\` tool.
+                // --- Stage 2 & 3: Parallel Search and Analysis per Goal ---
+                const allAnalysisResults = await Promise.all(
+                    goalsData.goals.map(async (goalItem, goalIndex) => {
+                        const goalId = `goal_${goalIndex + 1}`;
 
-Instructions:
-1. Identify Goals: Carefully examine the \`Research Plan\` to identify the goals you must complete.
-2. Examine Arguments: For every object (goal) in the \`Research Plan\`:
-    * Identify the \`goal\`
-    * Identify the \`analysis\`
-    * Identify the \`search_queries\`
-3. Execute Tool Call: Immediately trigger the \`web_search\` tool using the extracted goal, analysis and search queries as parameters for that specific goal.
-4. Mandatory Action: You must make a separate \`web_search\` tool call for each and every goal object present in the \`Research Plan\`.
+                        dataStream.writeMessageAnnotation({
+                            type: 'goal',
+                            goal_id: goalId,
+                            state: 'start',
+                            goal: goalItem.goal,
+                            analysis_plan: goalItem.analysis,
+                            queries: goalItem.search_queries,
+                        });
 
-<input>
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
-
-Research Plan:
-${JSON.stringify(goals.goals)}
-</input>
-                    `,
-                    tools: {
-                        web_search: tool({
-                            parameters: z.object({
-                                goal: z.string(),
-                                analysis: z.string(),
-                                search_queries: z.array(z.string()),
-                            }),
-                            execute: async ({ goal, analysis, search_queries }, { toolCallId }) => {
-                                console.log(
-                                    `Running Search for the goal '${goal}': `,
-                                    search_queries
-                                );
-
+                        // --- Stage 2: Parallel Search within the Goal ---
+                        const searchResults: SearchResult[] = [];
+                        const searchPromises = goalItem.search_queries.map(
+                            async (queryItem, queryIndex) => {
+                                const queryId = `${goalId}_query_${queryIndex + 1}`;
                                 dataStream.writeMessageAnnotation({
                                     type: 'search',
+                                    goal_id: goalId,
+                                    query_id: queryId,
                                     state: 'call',
-                                    query: search_queries[0],
-                                    goal: goal,
-                                    analysis: analysis,
-                                    search_queries: search_queries,
-                                    total_search_queries: totalSearchQueries,
+                                    topic: queryItem.topic,
+                                    query: queryItem.query,
                                 });
 
-                                const searchResults: SearchResult[] = [];
-
-                                const searchPromises = search_queries.map(async (query) => {
-                                    const res = await tvly.search(query, {
+                                try {
+                                    const res = await tvly.search(queryItem.query, {
+                                        topic: queryItem.topic,
                                         maxResults: 2,
                                         searchDepth:
                                             responseMode === 'concise' ? 'basic' : 'advanced',
-                                        includeAnswer: true,
                                     });
 
                                     const dedupedResults = deduplicateSearchResults(res);
-
-                                    searchResults.push({
-                                        query,
+                                    const resultData = {
+                                        query: queryItem.query,
                                         result: dedupedResults,
                                         success: true,
+                                    };
+                                    searchResults.push(resultData);
+
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'search',
+                                        goal_id: goalId,
+                                        query_id: queryId,
+                                        state: 'result',
+                                        data: resultData,
                                     });
+                                    return resultData;
+                                } catch (error: any) {
+                                    console.error(
+                                        `Search failed for query '${queryItem.query}':`,
+                                        error
+                                    );
+                                    const errorData = {
+                                        query: queryItem.query,
+                                        success: false,
+                                        error: error.message || 'Unknown search error',
+                                    };
+                                    searchResults.push(errorData);
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'search',
+                                        goal_id: goalId,
+                                        query_id: queryId,
+                                        state: 'error',
+                                        data: errorData,
+                                    });
+                                    return errorData; // Return error data to maintain array structure
+                                }
+                            }
+                        );
 
-                                    return searchResults;
-                                });
+                        // Wait for all searches for the current goal to complete
+                        const goalSearchResults = await Promise.all(searchPromises);
 
-                                await Promise.all(searchPromises);
+                        dataStream.writeMessageAnnotation({
+                            type: 'goal',
+                            goal_id: goalId,
+                            state: 'search_complete',
+                            search_results_count: goalSearchResults.length,
+                        });
 
-                                dataStream.writeMessageAnnotation({
-                                    type: 'search',
-                                    state: 'result',
-                                    count: searchResults.length,
-                                    total_queries: search_queries.length,
-                                    total_search_queries: totalSearchQueries,
-                                    queries: search_queries,
-                                    results: JSON.parse(JSON.stringify(searchResults)),
-                                    goal: goal,
-                                    analysis: analysis,
-                                });
+                        // --- Stage 3: Analysis for the Goal ---
+                        dataStream.writeMessageAnnotation({
+                            type: 'analysis',
+                            goal_id: goalId,
+                            state: 'call',
+                        });
 
-                                dataStream.writeMessageAnnotation({
-                                    type: 'analysis',
-                                    state: 'call',
-                                });
-
-                                const { text: searchAnalysis } = await generateText({
-                                    model: smallModel,
-                                    prompt: `
+                        const { text: searchAnalysis } = await generateText({
+                            model: smallModel,
+                            prompt: `
 You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
 
 A tool was just executed to retrieve up-to-date information related to a specific goal. You must now analyze the returned list of results (URLs, titles, content) and recommend which ones seem most promising.
 
-Goal: ${goal}
-Analysis to Perform: ${analysis}
-Search Results: ${JSON.stringify(searchResults)}
-                                    `,
-                                });
+You must also provide a short summary of the search results and the most promising results.
 
-                                dataStream.writeMessageAnnotation({
-                                    type: 'analysis',
-                                    state: 'result',
-                                    data: searchAnalysis,
-                                });
-
-                                return searchAnalysis;
-                            },
-                        }),
-                    },
-                    experimental_repairToolCall: async ({
-                        toolCall,
-                        tools,
-                        parameterSchema,
-                        error,
-                    }) => {
-                        if (NoSuchToolError.isInstance(error)) {
-                            return null;
-                        }
-                        console.log('Repairing the tool: ', toolCall.toolName);
-
-                        const tool = tools[toolCall.toolName as keyof typeof tools];
-
-                        const repairMessage = `
-The model tried to call the tool: ${toolCall.toolName} with the following parameters: ${JSON.stringify(toolCall.args)}.
-The tool accepts the following schema: ${JSON.stringify(parameterSchema(toolCall))}.
-
-Your job is to fix the arguments.
-Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}`;
-                        const { text: repairedText } = await generateText({
-                            model: smallModel,
-                            messages: [
-                                {
-                                    role: 'system',
-                                    content:
-                                        'You are a helpful assistant that generates valid JSON according to a schema.',
-                                },
-                                { role: 'user', content: repairMessage },
-                            ],
-                            temperature: 0,
-                            maxTokens: 500,
+Goal: ${goalItem.goal}
+Analysis to Perform: ${goalItem.analysis}
+Search Results: ${JSON.stringify(goalSearchResults)}
+                            `,
                         });
 
-                        let repairedArgs;
-                        try {
-                            const jsonMatch =
-                                repairedText.match(/```json\n([\s\S]*?)\n```/) ||
-                                repairedText.match(/```\n([\s\S]*?)\n```/) ||
-                                repairedText.match(/\{[\s\S]*\}/);
+                        dataStream.writeMessageAnnotation({
+                            type: 'analysis',
+                            goal_id: goalId,
+                            state: 'result',
+                            data: searchAnalysis,
+                        });
 
-                            const jsonString = jsonMatch ? jsonMatch[0] : repairedText;
+                        dataStream.writeMessageAnnotation({
+                            type: 'goal',
+                            goal_id: goalId,
+                            state: 'complete',
+                        });
 
-                            repairedArgs = JSON.parse(
-                                jsonString.replace(/```json\n|```\n|```/g, '')
-                            );
+                        // Return analysis and original goal/search info for final report context
+                        return {
+                            goal: goalItem.goal,
+                            analysis_plan: goalItem.analysis,
+                            search_results: goalSearchResults,
+                            analysis_summary: searchAnalysis,
+                        };
+                    })
+                );
 
-                            tool.parameters.parse(repairedArgs);
-
-                            console.log('Repaired Arguments: ', repairedArgs);
-                        } catch (error) {
-                            console.error('Failed to parse or validate repaired arguments:', error);
-                            repairedArgs = JSON.parse(toolCall.args);
-                        }
-
-                        return { ...toolCall, args: JSON.stringify(repairedArgs) };
-                    },
-                });
-
+                // --- Stage 4: Final Report Generation ---
                 dataStream.writeMessageAnnotation({
                     type: 'report',
                     state: 'call',
@@ -288,9 +260,21 @@ Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month:
 
                 const finalResponse = await streamText({
                     model: largeModel,
+                    providerOptions: {
+                        groq: {
+                            reasoningFormat: 'hidden',
+                        },
+                    },
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
-                        console.error('Error Occurred in Step 3: ', error);
+                        console.error('Error Occurred in Final Report Generation: ', error);
+                        dataStream.writeMessageAnnotation({
+                            type: 'report',
+                            state: 'error',
+                            error:
+                                (error as Error).message ||
+                                'Unknown error during report generation',
+                        });
                     },
                     prompt:
                         responseMode === 'research'
@@ -344,9 +328,9 @@ Formatting Instructions:
 4.  Use clear, descriptive source titles that indicate the authority or type of source (e.g., "Official Census Report", "Interview with Dr. Jane Smith", "Peer-Reviewed Study in Nature").
 5.  Use the exact URL provided in the \`Context\` without modification.
 
-Context:
+Context (Contains results for each research goal):
 
-${JSON.stringify((await toolResult.response).messages)}
+${JSON.stringify(allAnalysisResults)}
                     `
                             : `
 Your task is to generate a very brief summary, **no more than 5-6 sentences**, directly answering the core question implied by the research findings in the provided context.
@@ -358,8 +342,9 @@ Instructions:
 4.  Cite Sources Inline: Immediately follow each factual statement with its citation in the format \`[Source Title](URL)\`. Ensure all objective claims are cited using the exact URLs provided.
 5.  Formatting: Use simple markdown. Use '$' for inline math and '$$' for block math where necessary (avoid for currency, use "USD"). **Do not use headings, bullet points, or any other structuring elements.**
 
-Context:
-${JSON.stringify((await toolResult.response).messages)}
+Context (Contains results for each research goal):
+
+${JSON.stringify(allAnalysisResults)}
 
 Generate only the concise paragraph based on these instructions.`,
                 });
