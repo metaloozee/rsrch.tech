@@ -4,8 +4,6 @@ import {
     ChartArea,
     ListIcon,
     Loader2Icon,
-    LoaderCircleIcon,
-    LoaderIcon,
     MapIcon,
     ScrollText,
     SearchIcon,
@@ -468,23 +466,23 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
     let statusIcon = null;
     if (isPlanning) {
         statusText = 'Planning research...';
-        statusIcon = <LoaderCircleIcon className="size-3 animate-spin" />;
+        statusIcon = <Loader2Icon className="size-3 animate-spin" />;
     } else if (anyGoalSearching) {
         statusText = 'Searching web...';
-        statusIcon = <LoaderCircleIcon className="size-3 animate-spin" />;
+        statusIcon = <Loader2Icon className="size-3 animate-spin" />;
     } else if (anyGoalAnalyzing) {
         statusText = 'Analyzing results...';
-        statusIcon = <LoaderCircleIcon className="size-3 animate-spin" />;
+        statusIcon = <Loader2Icon className="size-3 animate-spin" />;
     } else if (isGeneratingFinal) {
         statusText = 'Generating report...';
-        statusIcon = <LoaderCircleIcon className="size-3 animate-spin" />;
+        statusIcon = <Loader2Icon className="size-3 animate-spin" />;
     } else if (report.error) {
         statusText = 'Research failed';
         // Add an error icon maybe
     } else if (!report.result && goalList.length > 0) {
         // If all goals done but report not started/finished, maybe "Synthesizing..."
         statusText = 'Synthesizing findings...';
-        statusIcon = <LoaderCircleIcon className="size-3 animate-spin" />;
+        statusIcon = <Loader2Icon className="size-3 animate-spin" />;
     }
 
     return (
@@ -579,7 +577,7 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                     {/* Loading message during search */}
                                     {anyGoalSearching && lastSearchCall && (
                                         <div className="flex items-center gap-2 text-xs p-2">
-                                            <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground" />
+                                            <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
                                             <p className="text-xs text-muted-foreground">
                                                 Searching: "{lastSearchCall?.query || 'query'}"
                                                 {lastSearchCall?.topic
@@ -1038,7 +1036,7 @@ function renderResearch(tools: ToolData[]) {
                                     <span className="font-medium">Research</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs opacity-80">
-                                    <LoaderCircleIcon className="size-3 animate-spin" />
+                                    <Loader2Icon className="size-3 animate-spin" />
                                     <span>
                                         {isLoading ? 'Searching...' : 'Processing results...'}
                                     </span>
@@ -1047,7 +1045,7 @@ function renderResearch(tools: ToolData[]) {
                         </AccordionTrigger>
                         <AccordionContent>
                             <div className="flex flex-col items-center justify-center p-4 gap-2">
-                                <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
+                                <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
                                 <p className="text-xs text-muted-foreground">
                                     {isLoading
                                         ? 'Searching the web for relevant information...'
