@@ -17,19 +17,17 @@ import { mistral } from '@ai-sdk/mistral';
 import { openrouter } from '@openrouter/ai-sdk-provider';
 import { groq } from '@ai-sdk/groq';
 import { tavily } from '@tavily/core';
+import { google } from '@ai-sdk/google';
 
 export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
 // const smallModel = mistral('mistral-small-latest');
-// const largeModel = mistral('mistral-large-latest');
+// const largeModel = mistral('mistral-small-latest');
 
-const smallModel = openrouter('openrouter/quasar-alpha');
-const largeModel = openrouter('anthropic/claude-3.7-sonnet');
-
-// const smallModel = groq("llama-3.3-70b-versatile")
-// const largeModel = groq("deepseek-r1-distill-llama-70b")
+const smallModel = google('gemini-2.5-flash-preview-04-17');
+const largeModel = google('gemini-2.5-flash-preview-04-17');
 
 export interface SearchResult {
     query: string;
@@ -260,11 +258,6 @@ Search Results: ${JSON.stringify(goalSearchResults)}
 
                 const finalResponse = await streamText({
                     model: largeModel,
-                    providerOptions: {
-                        groq: {
-                            reasoningFormat: 'hidden',
-                        },
-                    },
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Final Report Generation: ', error);
