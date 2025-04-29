@@ -23,11 +23,11 @@ export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
-// const smallModel = mistral('mistral-small-latest');
-// const largeModel = mistral('mistral-small-latest');
+const smallModel = mistral('mistral-small-latest');
+const largeModel = mistral('mistral-large-latest');
 
-const smallModel = google('gemini-2.5-flash-preview-04-17');
-const largeModel = google('gemini-2.5-flash-preview-04-17');
+// const smallModel = google('gemini-2.5-flash-preview-04-17');
+// const largeModel = google('gemini-2.5-flash-preview-04-17');
 
 export interface SearchResult {
     query: string;
