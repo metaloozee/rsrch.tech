@@ -13,26 +13,25 @@ import {
 import { ResponseMode } from '@/components/chat-input';
 
 import { env } from '@/lib/env';
-import { mistral } from '@ai-sdk/mistral';
-import { openrouter } from '@openrouter/ai-sdk-provider';
-import { groq } from '@ai-sdk/groq';
 import { tavily } from '@tavily/core';
+import { anthropic, AnthropicProviderOptions } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 
+import { mistral } from '@ai-sdk/mistral';
 export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
-const smallModel = mistral('mistral-small-latest');
-const largeModel = mistral('mistral-large-latest');
+const highReasoningModel = mistral('mistral-large-latest');
+const lowReasoningModel = mistral('mistral-small-latest');
 
-// const smallModel = google('gemini-2.5-flash-preview-04-17');
-// const largeModel = google('gemini-2.5-flash-preview-04-17');
+// const highReasoningModel = anthropic("claude-3-7-sonnet-20250219");
+// const lowReasoningModel = anthropic("claude-3-7-sonnet-20250219");
 
 export interface SearchResult {
+    reason: string;
     query: string;
-    result?: any;
-    success: boolean;
+    result: any;
     error?: any;
 }
 
@@ -54,35 +53,26 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                // --- Stage 1: Goal Generation ---
                 dataStream.writeMessageAnnotation({
                     type: 'plan',
                     state: 'call',
                 });
 
                 const { object: goalsData } = await generateObject({
-                    model: smallModel,
+                    model: lowReasoningModel,
                     schema: z.object({
                         goals: z
                             .array(
                                 z.object({
                                     goal: z.string(),
-                                    analysis: z.string(),
-                                    search_queries: z
-                                        .array(
-                                            z.object({
-                                                topic: z.enum(['general', 'news', 'finance']),
-                                                query: z.string(),
-                                            })
-                                        )
-                                        .min(1),
+                                    search_queries: z.array(z.string()).min(1),
                                 })
                             )
                             .min(1),
                     }),
                     messages: convertToCoreMessages(messages),
                     system: `
-You are an elite investigative journalist mapping out your strategy for a new investigation. Your first task is to deeply analyze the conversation history and define clear goals, search strategies, and analysis plans before initiating detailed research.
+You are an elite investigative journalist mapping out your strategy for a new investigation. Your first task is to deeply analyze the conversation history and define clear goals before initiating detailed research.
 
 Analyze the provided conversation history to understand its core components, nuances, and potential angles. Based on this analysis, define a set of specific goals.
 For each goal, generate multiple targeted search queries suitable for a search engine, and outline the key information or analysis required to achieve that goal later in the investigation.
@@ -101,7 +91,6 @@ INSTRUCTIONS:
 
 3. Develop Strategy per Goal: For *each* defined goal:
 a. Generate Search Queries: Propose ${responseMode === 'research' ? '3-5' : '1-3'} specific search queries designed to find relevant information for *this goal*. These queries should be suitable for direct use with a search engine. Use varied keywords, synonyms, and consider boolean operators (AND, OR, NOT) or phrase searching ("...") where appropriate.
-b. Outline Analysis Plan: Specify *what kind* of information needs to be extracted or *what type of analysis* should be performed on the search results later to satisfy *this goal*.
 
 Respond only with the JSON Object while following the provided format / schema.
                     `,
@@ -120,8 +109,7 @@ Respond only with the JSON Object while following the provided format / schema.
                     total_search_queries: totalSearchQueries,
                 });
 
-                // --- Stage 2 & 3: Parallel Search and Analysis per Goal ---
-                const allAnalysisResults = await Promise.all(
+                const relevantResultsPerGoal: SearchResult[][] = await Promise.all(
                     goalsData.goals.map(async (goalItem, goalIndex) => {
                         const goalId = `goal_${goalIndex + 1}`;
 
@@ -130,12 +118,10 @@ Respond only with the JSON Object while following the provided format / schema.
                             goal_id: goalId,
                             state: 'start',
                             goal: goalItem.goal,
-                            analysis_plan: goalItem.analysis,
                             queries: goalItem.search_queries,
                         });
 
-                        // --- Stage 2: Parallel Search within the Goal ---
-                        const searchResults: SearchResult[] = [];
+                        const relevantSearchResultsForGoal: SearchResult[] = [];
                         const searchPromises = goalItem.search_queries.map(
                             async (queryItem, queryIndex) => {
                                 const queryId = `${goalId}_query_${queryIndex + 1}`;
@@ -144,13 +130,11 @@ Respond only with the JSON Object while following the provided format / schema.
                                     goal_id: goalId,
                                     query_id: queryId,
                                     state: 'call',
-                                    topic: queryItem.topic,
-                                    query: queryItem.query,
+                                    query: queryItem,
                                 });
 
                                 try {
-                                    const res = await tvly.search(queryItem.query, {
-                                        topic: queryItem.topic,
+                                    const res = await tvly.search(queryItem, {
                                         maxResults: 2,
                                         searchDepth:
                                             responseMode === 'concise' ? 'basic' : 'advanced',
@@ -158,31 +142,90 @@ Respond only with the JSON Object while following the provided format / schema.
 
                                     const dedupedResults = deduplicateSearchResults(res);
                                     const resultData = {
-                                        query: queryItem.query,
+                                        query: queryItem,
                                         result: dedupedResults,
-                                        success: true,
                                     };
-                                    searchResults.push(resultData);
 
                                     dataStream.writeMessageAnnotation({
-                                        type: 'search',
+                                        type: 'analysis',
                                         goal_id: goalId,
-                                        query_id: queryId,
-                                        state: 'result',
-                                        data: resultData,
+                                        state: 'call',
                                     });
-                                    return resultData;
+
+                                    const { object: searchAnalysis } = await generateObject({
+                                        model: highReasoningModel,
+                                        schema: z.object({
+                                            isRelevant: z
+                                                .boolean()
+                                                .describe(
+                                                    'Whether the result is relevant to the goal'
+                                                ),
+                                            reason: z
+                                                .string()
+                                                .describe(
+                                                    'A short explanation for why the result is relevant to the goal'
+                                                ),
+                                        }),
+                                        prompt: `
+You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
+            
+A tool was just executed to retrieve up-to-date information related to a specific goal. 
+
+<search-results>
+${JSON.stringify(resultData)}
+</search-results>
+
+<goal>
+${goalItem.goal}
+</goal>
+
+Return only the JSON Object while following the provided format / schema.
+                                        `,
+                                    });
+
+                                    if (searchAnalysis.isRelevant) {
+                                        relevantSearchResultsForGoal.push({
+                                            reason: searchAnalysis.reason,
+                                            query: queryItem,
+                                            result: resultData.result,
+                                        });
+                                        dataStream.writeMessageAnnotation({
+                                            type: 'search',
+                                            goal_id: goalId,
+                                            query_id: queryId,
+                                            state: 'result',
+                                            data: resultData,
+                                        });
+                                    } else {
+                                        dataStream.writeMessageAnnotation({
+                                            type: 'search',
+                                            goal_id: goalId,
+                                            query_id: queryId,
+                                            state: 'irrelevant',
+                                            data: {
+                                                query: queryItem,
+                                                reason: searchAnalysis.reason,
+                                            },
+                                        });
+                                    }
+
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'analysis',
+                                        goal_id: goalId,
+                                        state: 'result',
+                                        data: searchAnalysis,
+                                    });
+
+                                    return searchAnalysis.isRelevant;
                                 } catch (error: any) {
-                                    console.error(
-                                        `Search failed for query '${queryItem.query}':`,
-                                        error
-                                    );
+                                    console.error(`Search failed for query '${queryItem}':`, error);
                                     const errorData = {
-                                        query: queryItem.query,
-                                        success: false,
-                                        error: error.message || 'Unknown search error',
+                                        query: queryItem,
+                                        result: {
+                                            error: error.message || 'Unknown search error',
+                                        },
                                     };
-                                    searchResults.push(errorData);
+
                                     dataStream.writeMessageAnnotation({
                                         type: 'search',
                                         goal_id: goalId,
@@ -190,48 +233,18 @@ Respond only with the JSON Object while following the provided format / schema.
                                         state: 'error',
                                         data: errorData,
                                     });
-                                    return errorData; // Return error data to maintain array structure
+
+                                    return false;
                                 }
                             }
                         );
-
-                        // Wait for all searches for the current goal to complete
-                        const goalSearchResults = await Promise.all(searchPromises);
+                        await Promise.all(searchPromises);
 
                         dataStream.writeMessageAnnotation({
                             type: 'goal',
                             goal_id: goalId,
                             state: 'search_complete',
-                            search_results_count: goalSearchResults.length,
-                        });
-
-                        // --- Stage 3: Analysis for the Goal ---
-                        dataStream.writeMessageAnnotation({
-                            type: 'analysis',
-                            goal_id: goalId,
-                            state: 'call',
-                        });
-
-                        const { text: searchAnalysis } = await generateText({
-                            model: smallModel,
-                            prompt: `
-You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
-
-A tool was just executed to retrieve up-to-date information related to a specific goal. You must now analyze the returned list of results (URLs, titles, content) and recommend which ones seem most promising.
-
-You must also provide a short summary of the search results and the most promising results.
-
-Goal: ${goalItem.goal}
-Analysis to Perform: ${goalItem.analysis}
-Search Results: ${JSON.stringify(goalSearchResults)}
-                            `,
-                        });
-
-                        dataStream.writeMessageAnnotation({
-                            type: 'analysis',
-                            goal_id: goalId,
-                            state: 'result',
-                            data: searchAnalysis,
+                            search_results_count: relevantSearchResultsForGoal.length,
                         });
 
                         dataStream.writeMessageAnnotation({
@@ -240,24 +253,27 @@ Search Results: ${JSON.stringify(goalSearchResults)}
                             state: 'complete',
                         });
 
-                        // Return analysis and original goal/search info for final report context
-                        return {
-                            goal: goalItem.goal,
-                            analysis_plan: goalItem.analysis,
-                            search_results: goalSearchResults,
-                            analysis_summary: searchAnalysis,
-                        };
+                        return relevantSearchResultsForGoal;
                     })
                 );
 
-                // --- Stage 4: Final Report Generation ---
+                const allRelevantSearchResults: SearchResult[] = relevantResultsPerGoal.flat();
+
+                const finalDedupedRelevantResults =
+                    deduplicateRelevantResults(allRelevantSearchResults);
+
                 dataStream.writeMessageAnnotation({
                     type: 'report',
                     state: 'call',
                 });
 
                 const finalResponse = await streamText({
-                    model: largeModel,
+                    model: highReasoningModel,
+                    providerOptions: {
+                        anthropic: {
+                            thinking: { type: 'enabled', budgetTokens: 12000 },
+                        } satisfies AnthropicProviderOptions,
+                    },
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Final Report Generation: ', error);
@@ -323,7 +339,7 @@ Formatting Instructions:
 
 Context (Contains results for each research goal):
 
-${JSON.stringify(allAnalysisResults)}
+${JSON.stringify(finalDedupedRelevantResults)}
                     `
                             : `
 Your task is to generate a very brief summary, **no more than 5-6 sentences**, directly answering the core question implied by the research findings in the provided context.
@@ -337,7 +353,7 @@ Instructions:
 
 Context (Contains results for each research goal):
 
-${JSON.stringify(allAnalysisResults)}
+${JSON.stringify(finalDedupedRelevantResults)}
 
 Generate only the concise paragraph based on these instructions.`,
                 });
@@ -406,6 +422,44 @@ function deduplicateSearchResults(searchResults: any): any {
             seenImageUrls.add(url);
             return true;
         });
+    }
+
+    return dedupedResults;
+}
+
+function deduplicateRelevantResults(relevantResults: SearchResult[]): SearchResult[] {
+    if (!relevantResults || !Array.isArray(relevantResults)) {
+        return relevantResults;
+    }
+
+    const seenUrls = new Set<string>();
+    const dedupedResults: SearchResult[] = [];
+
+    for (const searchResult of relevantResults) {
+        if (
+            !searchResult.result ||
+            !searchResult.result.results ||
+            !Array.isArray(searchResult.result.results)
+        ) {
+            dedupedResults.push(searchResult);
+            continue;
+        }
+
+        let uniquePrimaryUrlFound = false;
+        let hasSeenUrl = false;
+        if (searchResult.result.results.length > 0) {
+            const primaryUrl = normalizeUrl(searchResult.result.results[0].url);
+            if (seenUrls.has(primaryUrl)) {
+                hasSeenUrl = true;
+            } else {
+                seenUrls.add(primaryUrl);
+                uniquePrimaryUrlFound = true;
+            }
+        }
+
+        if (uniquePrimaryUrlFound) {
+            dedupedResults.push(searchResult);
+        }
     }
 
     return dedupedResults;

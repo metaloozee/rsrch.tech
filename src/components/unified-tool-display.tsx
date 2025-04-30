@@ -169,7 +169,7 @@ interface GoalState {
     goalData?: any; // from goal annotation with state 'start'
     searches: {
         [queryId: string]: {
-            state: 'call' | 'result' | 'error';
+            state: 'call' | 'result' | 'error' | 'irrelevant';
             data: any; // from search annotation
         };
     };
@@ -177,6 +177,7 @@ interface GoalState {
         state: 'call' | 'result' | 'error';
         data?: any; // from analysis annotation
     };
+    queries?: string[];
 }
 
 interface WorkflowState {
@@ -232,6 +233,8 @@ function extractResearchSteps(message: Message): WorkflowState {
                             analysis: { state: 'call' },
                             // Initialize with goal title if available directly
                             goalData: directGoal ? { goal: directGoal } : {},
+                            // Add direct queries from annotation
+                            queries: annotation.queries || [],
                         };
                     }
                     if (goal_id && annotationState) {
@@ -246,6 +249,10 @@ function extractResearchSteps(message: Message): WorkflowState {
                                     annotationData?.goal ||
                                     state.goals[goal_id]?.goalData?.goal,
                             };
+                            // Update queries if present in annotation
+                            if (annotation.queries && Array.isArray(annotation.queries)) {
+                                state.goals[goal_id].queries = annotation.queries;
+                            }
                         } else if (
                             annotationState === 'search_complete' &&
                             state.goals[goal_id].state === 'start'
@@ -353,6 +360,29 @@ function parseJsonIfString(value: any): any {
     }
 }
 
+// Helper to safely handle potentially circular references
+function safeStringify(obj: any, fallback: string = '[Complex Object]'): string {
+    if (!obj || typeof obj !== 'object') return String(obj);
+
+    try {
+        // Use a replacer to handle circular references
+        const seen = new WeakSet();
+        const safeJson = JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) {
+                    return '[Circular Reference]';
+                }
+                seen.add(value);
+            }
+            return value;
+        });
+        return safeJson;
+    } catch (err) {
+        console.error('Error stringifying object:', err);
+        return fallback;
+    }
+}
+
 function extractToolDataFromPart(part: any): ToolData | null {
     if (part.type === 'tool-call' || part.type === 'tool_call') {
         return {
@@ -392,7 +422,7 @@ export const UnifiedToolDisplay = ({ message, className }: UnifiedToolDisplayPro
     const workflowState = extractResearchSteps(message);
 
     // Add debugging to help identify issues
-    console.log('UnifiedToolDisplay - workflowState:', workflowState);
+    console.log('UnifiedToolDisplay - workflowState:', safeStringify(workflowState));
 
     const hasAnnotations = (message as any).annotations && (message as any).annotations.length > 0;
 
@@ -445,21 +475,30 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
 
     // Count the actual total number of searches across all goals
     const actualSearchCount = goalList.reduce((total, goal) => {
+        // First check queries from goal annotation
+        if (goal.queries && Array.isArray(goal.queries)) {
+            return total + goal.queries.length;
+        }
+        // Fall back to searches if no direct queries
         return total + Object.keys(goal.searches).length;
     }, 0);
 
     // Use the actual count, falling back to the annotation data if available
     const overallSearchCount = actualSearchCount || plan.data?.total_search_queries || 0;
 
-    console.log('Search statistics:', {
-        actualSearchCount,
-        fromAnnotation: plan.data?.total_search_queries,
-        goalCount: goalList.length,
-        searchesPerGoal: goalList.map((g) => ({
-            goalId: g.id,
-            searchCount: Object.keys(g.searches).length,
-        })),
-    });
+    console.log(
+        'Search statistics:',
+        safeStringify({
+            actualSearchCount,
+            fromAnnotation: plan.data?.total_search_queries,
+            goalCount: goalList.length,
+            searchesPerGoal: goalList.map((g) => ({
+                goalId: g.id,
+                queriesFromGoal: g.queries?.length || 0,
+                searchCount: Object.keys(g.searches).length,
+            })),
+        })
+    );
 
     // Determine overall status text
     let statusText = 'Research completed';
@@ -564,7 +603,10 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                                 </div>
                                             ) : allGoalsAnalyzed ? (
                                                 <span className="inline-flex px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 text-[10px]">
-                                                    {overallSearchCount} SEARCHES
+                                                    {/* Show total_search_queries from plan annotation if available, otherwise use calculated count */}
+                                                    {plan.data?.total_search_queries ||
+                                                        overallSearchCount}{' '}
+                                                    SEARCHES
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 text-[10px]">
@@ -593,380 +635,466 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                         <div className="space-y-3">
                                             {goalList.map((goal: GoalState) => {
                                                 // Debug the goal data structure
-                                                console.log(
-                                                    'Rendering goal:',
-                                                    goal.id,
-                                                    'goalData:',
-                                                    goal.goalData
-                                                );
+                                                try {
+                                                    console.log(
+                                                        'Rendering goal:',
+                                                        goal.id,
+                                                        'goalData:',
+                                                        safeStringify(goal.goalData)
+                                                    );
 
-                                                // Try multiple potential locations for the goal title
-                                                const goalTitle =
-                                                    goal.goalData?.goal ||
-                                                    (typeof goal.goalData === 'object' &&
-                                                        goal.goalData !== null &&
-                                                        Object.values(goal.goalData)[0]) ||
-                                                    `Goal ${goal.id.split('_')[1]}`;
+                                                    // Try multiple potential locations for the goal title
+                                                    const goalTitle =
+                                                        goal.goalData?.goal ||
+                                                        (typeof goal.goalData === 'object' &&
+                                                            goal.goalData !== null &&
+                                                            Object.values(goal.goalData)[0]) ||
+                                                        `Goal ${goal.id.split('_')[1]}`;
 
-                                                // Get valid search queries (non-null)
-                                                const searchQueries = Object.values(goal.searches)
-                                                    .map((s) => {
-                                                        // Handle different data structures
-                                                        if (s.data?.query) return s.data.query;
-                                                        if (
-                                                            typeof s.data === 'object' &&
-                                                            s.data !== null
-                                                        ) {
-                                                            // Try to find a query field at any level
-                                                            for (const key in s.data) {
-                                                                if (
-                                                                    key === 'query' &&
-                                                                    typeof s.data[key] === 'string'
-                                                                ) {
-                                                                    return s.data[key];
-                                                                }
-                                                            }
-                                                        }
-                                                        return null;
-                                                    })
-                                                    .filter(Boolean);
-
-                                                // Count the actual search queries for this goal
-                                                const searchCount = Object.keys(
-                                                    goal.searches
-                                                ).length;
-
-                                                const searchResultsData = Object.values(
-                                                    goal.searches
-                                                )
-                                                    .filter((s) => s.state === 'result')
-                                                    .map((s) => {
-                                                        // Try to find results in different potential locations
-                                                        if (s.data?.result?.results)
-                                                            return s.data.result;
-                                                        if (s.data?.results) return s.data;
-                                                        if (s.data?.result) return s.data.result;
-                                                        return s.data;
-                                                    })
-                                                    .filter(Boolean);
-
-                                                const domainMap: Record<
-                                                    string,
-                                                    { count: number; url: string; title: string }
-                                                > = {};
-                                                searchResultsData.forEach((searchResult: any) => {
-                                                    // First check if results are directly available
-                                                    const results = Array.isArray(
-                                                        searchResult.results
+                                                    // Get valid search queries (non-null)
+                                                    const searchQueries = Object.values(
+                                                        goal.searches
                                                     )
-                                                        ? searchResult.results
-                                                        : // Then check if they're in a nested structure
-                                                          Array.isArray(
-                                                                searchResult.result?.results
-                                                            )
-                                                          ? searchResult.result.results
-                                                          : // Try one more level
-                                                            Array.isArray(searchResult)
-                                                            ? searchResult
-                                                            : [];
-
-                                                    results.forEach((source: any) => {
-                                                        try {
-                                                            if (source && source.url) {
-                                                                const sourceUrl = source.url;
-                                                                const domain = new URL(
-                                                                    sourceUrl
-                                                                ).hostname.replace('www.', '');
-
-                                                                if (!domainMap[domain]) {
-                                                                    domainMap[domain] = {
-                                                                        count: 0,
-                                                                        url: sourceUrl,
-                                                                        title:
-                                                                            source.title || domain,
-                                                                    };
+                                                        .map((s) => {
+                                                            try {
+                                                                // Handle different data structures
+                                                                if (s.data?.query)
+                                                                    return s.data.query;
+                                                                if (
+                                                                    typeof s.data === 'object' &&
+                                                                    s.data !== null
+                                                                ) {
+                                                                    // Try to find a query field at any level
+                                                                    for (const key in s.data) {
+                                                                        if (
+                                                                            key === 'query' &&
+                                                                            typeof s.data[key] ===
+                                                                                'string'
+                                                                        ) {
+                                                                            return s.data[key];
+                                                                        }
+                                                                    }
                                                                 }
-                                                                domainMap[domain].count++;
+                                                                return null;
+                                                            } catch (err) {
+                                                                console.error(
+                                                                    'Error parsing search query:',
+                                                                    err
+                                                                );
+                                                                return null;
                                                             }
-                                                        } catch (e) {
-                                                            console.error(
-                                                                'Error processing URL:',
-                                                                e
-                                                            );
-                                                            if (!domainMap['unknown']) {
-                                                                domainMap['unknown'] = {
-                                                                    count: 0,
-                                                                    url: '#',
-                                                                    title: 'Unknown Source',
-                                                                };
+                                                        })
+                                                        .filter(Boolean);
+
+                                                    // Count the actual search queries for this goal
+                                                    const searchCount =
+                                                        goal.queries?.length ||
+                                                        Object.keys(goal.searches).length;
+
+                                                    const searchResultsData = Object.values(
+                                                        goal.searches
+                                                    )
+                                                        .filter((s) => s.state === 'result')
+                                                        .map((s) => {
+                                                            try {
+                                                                // Try to find results in different potential locations
+                                                                if (s.data?.result?.results)
+                                                                    return s.data.result;
+                                                                if (s.data?.results) return s.data;
+                                                                if (s.data?.result)
+                                                                    return s.data.result;
+                                                                return s.data;
+                                                            } catch (err) {
+                                                                console.error(
+                                                                    'Error extracting search results:',
+                                                                    err
+                                                                );
+                                                                return null;
                                                             }
-                                                            domainMap['unknown'].count++;
+                                                        })
+                                                        .filter(Boolean);
+
+                                                    const domainMap: Record<
+                                                        string,
+                                                        {
+                                                            count: number;
+                                                            url: string;
+                                                            title: string;
                                                         }
-                                                    });
-                                                });
+                                                    > = {};
 
-                                                const goalIsSearching = Object.values(
-                                                    goal.searches
-                                                ).some((s) => s.state === 'call');
-                                                const goalIsAnalyzing =
-                                                    goal.analysis.state === 'call';
-                                                const goalCompleted = goal.state === 'complete';
+                                                    try {
+                                                        searchResultsData.forEach(
+                                                            (searchResult: any) => {
+                                                                // First check if results are directly available
+                                                                const results = Array.isArray(
+                                                                    searchResult.results
+                                                                )
+                                                                    ? searchResult.results
+                                                                    : // Then check if they're in a nested structure
+                                                                      Array.isArray(
+                                                                            searchResult.result
+                                                                                ?.results
+                                                                        )
+                                                                      ? searchResult.result.results
+                                                                      : // Try one more level
+                                                                        Array.isArray(searchResult)
+                                                                        ? searchResult
+                                                                        : [];
 
-                                                let goalStatusBadge = (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
-                                                        Pending
-                                                    </span>
-                                                );
-                                                if (goalIsSearching) {
-                                                    goalStatusBadge = (
-                                                        <div className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400">
-                                                            <Loader2Icon className="size-2.5 animate-spin" />{' '}
-                                                            Searching
-                                                        </div>
-                                                    );
-                                                } else if (goalIsAnalyzing) {
-                                                    goalStatusBadge = (
-                                                        <div className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400">
-                                                            <Loader2Icon className="size-2.5 animate-spin" />{' '}
-                                                            Analyzing
-                                                        </div>
-                                                    );
-                                                } else if (goalCompleted) {
-                                                    goalStatusBadge = (
-                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-900/30 text-green-400">
-                                                            Completed
+                                                                results.forEach((source: any) => {
+                                                                    try {
+                                                                        if (source && source.url) {
+                                                                            const sourceUrl =
+                                                                                source.url;
+                                                                            const domain = new URL(
+                                                                                sourceUrl
+                                                                            ).hostname.replace(
+                                                                                'www.',
+                                                                                ''
+                                                                            );
+
+                                                                            if (
+                                                                                !domainMap[domain]
+                                                                            ) {
+                                                                                domainMap[domain] =
+                                                                                    {
+                                                                                        count: 0,
+                                                                                        url: sourceUrl,
+                                                                                        title:
+                                                                                            source?.title ||
+                                                                                            domain,
+                                                                                    };
+                                                                            }
+                                                                            domainMap[domain]
+                                                                                .count++;
+                                                                        }
+                                                                    } catch (e) {
+                                                                        console.error(
+                                                                            'Error processing URL:',
+                                                                            e
+                                                                        );
+                                                                        if (!domainMap['unknown']) {
+                                                                            domainMap['unknown'] = {
+                                                                                count: 0,
+                                                                                url: '#',
+                                                                                title: 'Unknown Source',
+                                                                            };
+                                                                        }
+                                                                        domainMap['unknown']
+                                                                            .count++;
+                                                                    }
+                                                                });
+                                                            }
+                                                        );
+                                                    } catch (err) {
+                                                        console.error(
+                                                            'Error processing domain map:',
+                                                            err
+                                                        );
+                                                        // Create a fallback domain entry
+                                                        if (Object.keys(domainMap).length === 0) {
+                                                            domainMap['error'] = {
+                                                                count: 1,
+                                                                url: '#',
+                                                                title: 'Error Processing Results',
+                                                            };
+                                                        }
+                                                    }
+
+                                                    const goalIsSearching = Object.values(
+                                                        goal.searches
+                                                    ).some((s) => s.state === 'call');
+                                                    const goalIsAnalyzing =
+                                                        goal.analysis.state === 'call';
+                                                    const goalCompleted = goal.state === 'complete';
+
+                                                    let goalStatusBadge = (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
+                                                            Pending
                                                         </span>
                                                     );
-                                                }
+                                                    if (goalIsSearching) {
+                                                        goalStatusBadge = (
+                                                            <div className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400">
+                                                                <Loader2Icon className="size-2.5 animate-spin" />{' '}
+                                                                Searching
+                                                            </div>
+                                                        );
+                                                    } else if (goalIsAnalyzing) {
+                                                        goalStatusBadge = (
+                                                            <div className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400">
+                                                                <Loader2Icon className="size-2.5 animate-spin" />{' '}
+                                                                Analyzing
+                                                            </div>
+                                                        );
+                                                    } else if (goalCompleted) {
+                                                        goalStatusBadge = (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-900/30 text-green-400">
+                                                                Completed
+                                                            </span>
+                                                        );
+                                                    }
 
-                                                return (
-                                                    <div
-                                                        key={goal.id}
-                                                        className="border border-neutral-800 rounded-md"
-                                                    >
-                                                        {/* Use Disclosure for each goal */}
-                                                        <Disclosure>
-                                                            <DisclosureTrigger className="w-full">
-                                                                <div className="flex flex-col gap-2 flex-wrap items-start justify-between p-3 w-full cursor-pointer hover:bg-neutral-800/30 transition-colors rounded-t-md">
-                                                                    <div className="font-medium md:max-w-lg">
-                                                                        {goalTitle}
+                                                    return (
+                                                        <div
+                                                            key={goal.id}
+                                                            className="border border-neutral-800 rounded-md"
+                                                        >
+                                                            {/* Use Disclosure for each goal */}
+                                                            <Disclosure>
+                                                                <DisclosureTrigger className="w-full">
+                                                                    <div className="flex flex-col gap-2 flex-wrap items-start justify-between p-3 w-full cursor-pointer hover:bg-neutral-800/30 transition-colors rounded-t-md">
+                                                                        <div className="font-medium md:max-w-lg">
+                                                                            {goalTitle}
+                                                                        </div>
+                                                                        <div className="flex flex-wrap items-start justify-start gap-2">
+                                                                            {goalStatusBadge}
+                                                                            {searchCount > 0 && (
+                                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
+                                                                                    {searchCount}{' '}
+                                                                                    {searchCount ===
+                                                                                    1
+                                                                                        ? 'query'
+                                                                                        : 'queries'}
+                                                                                </span>
+                                                                            )}
+                                                                            {Object.keys(domainMap)
+                                                                                .length > 0 && (
+                                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
+                                                                                    {
+                                                                                        Object.keys(
+                                                                                            domainMap
+                                                                                        ).length
+                                                                                    }{' '}
+                                                                                    {Object.keys(
+                                                                                        domainMap
+                                                                                    ).length === 1
+                                                                                        ? 'source'
+                                                                                        : 'sources'}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="flex flex-wrap items-start justify-start gap-2">
-                                                                        {goalStatusBadge}
+                                                                </DisclosureTrigger>
+                                                                <DisclosureContent>
+                                                                    <div className="px-3 py-4 space-y-3 border-t border-neutral-800">
+                                                                        {/* Search Queries for this goal */}
                                                                         {searchCount > 0 && (
-                                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
-                                                                                {searchCount}{' '}
-                                                                                {searchCount === 1
-                                                                                    ? 'query'
-                                                                                    : 'queries'}
-                                                                            </span>
+                                                                            <div className="space-y-1">
+                                                                                <div className="text-[11px] font-medium text-neutral-400">
+                                                                                    Search Queries
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-2">
+                                                                                    {/* First check if we have direct queries from goal annotation */}
+                                                                                    {goal.queries &&
+                                                                                    goal.queries
+                                                                                        .length > 0
+                                                                                        ? // Render queries from goal annotation
+                                                                                          goal.queries.map(
+                                                                                              (
+                                                                                                  query,
+                                                                                                  qIndex
+                                                                                              ) => (
+                                                                                                  <div
+                                                                                                      key={
+                                                                                                          qIndex
+                                                                                                      }
+                                                                                                      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
+                                                                                                  >
+                                                                                                      <GlobeIcon className="size-2 text-neutral-400" />
+                                                                                                      <span className="text-[11px]">
+                                                                                                          {
+                                                                                                              query
+                                                                                                          }
+                                                                                                      </span>
+                                                                                                  </div>
+                                                                                              )
+                                                                                          )
+                                                                                        : // Fall back to search annotations
+                                                                                          Object.values(
+                                                                                              goal.searches
+                                                                                          ).map(
+                                                                                              (
+                                                                                                  search,
+                                                                                                  qIndex
+                                                                                              ) => {
+                                                                                                  // Get query text and topic from the search data
+                                                                                                  let queryText =
+                                                                                                      '';
+                                                                                                  let queryTopic =
+                                                                                                      'general';
+
+                                                                                                  if (
+                                                                                                      search
+                                                                                                          .data
+                                                                                                          ?.query
+                                                                                                  ) {
+                                                                                                      queryText =
+                                                                                                          search
+                                                                                                              .data
+                                                                                                              .query;
+                                                                                                  }
+
+                                                                                                  if (
+                                                                                                      search
+                                                                                                          .data
+                                                                                                          ?.topic
+                                                                                                  ) {
+                                                                                                      queryTopic =
+                                                                                                          search
+                                                                                                              .data
+                                                                                                              .topic;
+                                                                                                  }
+
+                                                                                                  // If we still don't have query text, use a placeholder
+                                                                                                  if (
+                                                                                                      !queryText
+                                                                                                  ) {
+                                                                                                      queryText = `Search ${qIndex + 1}`;
+                                                                                                  }
+
+                                                                                                  // Get the appropriate icon based on topic
+                                                                                                  const TopicIcon =
+                                                                                                      (() => {
+                                                                                                          switch (
+                                                                                                              queryTopic
+                                                                                                          ) {
+                                                                                                              case 'news':
+                                                                                                                  return NewspaperIcon;
+                                                                                                              case 'finance':
+                                                                                                                  return LineChartIcon;
+                                                                                                              case 'general':
+                                                                                                              default:
+                                                                                                                  return GlobeIcon;
+                                                                                                          }
+                                                                                                      })();
+
+                                                                                                  return (
+                                                                                                      <div
+                                                                                                          key={
+                                                                                                              qIndex
+                                                                                                          }
+                                                                                                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
+                                                                                                      >
+                                                                                                          <TopicIcon className="size-2 text-neutral-400" />
+                                                                                                          <span className="text-[11px]">
+                                                                                                              {
+                                                                                                                  queryText
+                                                                                                              }
+                                                                                                          </span>
+                                                                                                      </div>
+                                                                                                  );
+                                                                                              }
+                                                                                          )}
+                                                                                </div>
+                                                                            </div>
                                                                         )}
+
+                                                                        {/* Sources/Domains for this goal */}
                                                                         {Object.keys(domainMap)
                                                                             .length > 0 && (
-                                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800">
-                                                                                {
-                                                                                    Object.keys(
+                                                                            <div className="space-y-1">
+                                                                                <div className="text-[11px] font-medium text-neutral-400">
+                                                                                    Sources
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-2">
+                                                                                    {Object.entries(
                                                                                         domainMap
-                                                                                    ).length
-                                                                                }{' '}
-                                                                                {Object.keys(
-                                                                                    domainMap
-                                                                                ).length === 1
-                                                                                    ? 'source'
-                                                                                    : 'sources'}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            </DisclosureTrigger>
-                                                            <DisclosureContent>
-                                                                <div className="px-3 py-4 space-y-3 border-t border-neutral-800">
-                                                                    {/* Search Queries for this goal */}
-                                                                    {searchCount > 0 && (
-                                                                        <div className="space-y-1">
-                                                                            <div className="text-[11px] font-medium text-neutral-400">
-                                                                                Search Queries
-                                                                            </div>
-                                                                            <div className="flex flex-wrap gap-2">
-                                                                                {Object.values(
-                                                                                    goal.searches
-                                                                                ).map(
-                                                                                    (
-                                                                                        search,
-                                                                                        qIndex
-                                                                                    ) => {
-                                                                                        // Get query text and topic from the search data
-                                                                                        let queryText =
-                                                                                            '';
-                                                                                        let queryTopic =
-                                                                                            'general';
-
-                                                                                        if (
-                                                                                            search
-                                                                                                .data
-                                                                                                ?.query
-                                                                                        ) {
-                                                                                            queryText =
-                                                                                                search
-                                                                                                    .data
-                                                                                                    .query;
-                                                                                        }
-
-                                                                                        if (
-                                                                                            search
-                                                                                                .data
-                                                                                                ?.topic
-                                                                                        ) {
-                                                                                            queryTopic =
-                                                                                                search
-                                                                                                    .data
-                                                                                                    .topic;
-                                                                                        }
-
-                                                                                        // If we still don't have query text, use a placeholder
-                                                                                        if (
-                                                                                            !queryText
-                                                                                        ) {
-                                                                                            queryText = `Search ${qIndex + 1}`;
-                                                                                        }
-
-                                                                                        // Get the appropriate icon based on topic
-                                                                                        const TopicIcon =
-                                                                                            (() => {
-                                                                                                switch (
-                                                                                                    queryTopic
-                                                                                                ) {
-                                                                                                    case 'news':
-                                                                                                        return NewspaperIcon;
-                                                                                                    case 'finance':
-                                                                                                        return LineChartIcon;
-                                                                                                    case 'general':
-                                                                                                    default:
-                                                                                                        return GlobeIcon;
-                                                                                                }
-                                                                                            })();
-
-                                                                                        return (
-                                                                                            <div
-                                                                                                key={
-                                                                                                    qIndex
-                                                                                                }
-                                                                                                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700"
-                                                                                            >
-                                                                                                <TopicIcon className="size-2 text-neutral-400" />
-                                                                                                <span className="text-[11px]">
-                                                                                                    {
-                                                                                                        queryText
-                                                                                                    }
-                                                                                                </span>
-                                                                                            </div>
-                                                                                        );
-                                                                                    }
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-
-                                                                    {/* Sources/Domains for this goal */}
-                                                                    {Object.keys(domainMap).length >
-                                                                        0 && (
-                                                                        <div className="space-y-1">
-                                                                            <div className="text-[11px] font-medium text-neutral-400">
-                                                                                Sources
-                                                                            </div>
-                                                                            <div className="flex flex-wrap gap-2">
-                                                                                {Object.entries(
-                                                                                    domainMap
-                                                                                )
-                                                                                    .sort(
-                                                                                        (
-                                                                                            a: [
-                                                                                                string,
-                                                                                                any,
-                                                                                            ],
-                                                                                            b: [
-                                                                                                string,
-                                                                                                any,
-                                                                                            ]
-                                                                                        ) =>
-                                                                                            b[1]
-                                                                                                .count -
-                                                                                            a[1]
-                                                                                                .count
                                                                                     )
-                                                                                    .map(
-                                                                                        (
-                                                                                            [
-                                                                                                domain,
-                                                                                                info,
-                                                                                            ]: [
-                                                                                                string,
-                                                                                                any,
-                                                                                            ],
-                                                                                            idx: number
-                                                                                        ) => (
-                                                                                            <Link
-                                                                                                key={
-                                                                                                    idx
-                                                                                                }
-                                                                                                target="_blank"
-                                                                                                href={
-                                                                                                    info.url
-                                                                                                }
-                                                                                                title={`${info.title} (${info.url})`}
-                                                                                                className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
-                                                                                            >
-                                                                                                <img
-                                                                                                    src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
-                                                                                                    width={
-                                                                                                        12
+                                                                                        .sort(
+                                                                                            (
+                                                                                                a: [
+                                                                                                    string,
+                                                                                                    any,
+                                                                                                ],
+                                                                                                b: [
+                                                                                                    string,
+                                                                                                    any,
+                                                                                                ]
+                                                                                            ) =>
+                                                                                                b[1]
+                                                                                                    .count -
+                                                                                                a[1]
+                                                                                                    .count
+                                                                                        )
+                                                                                        .map(
+                                                                                            (
+                                                                                                [
+                                                                                                    domain,
+                                                                                                    info,
+                                                                                                ]: [
+                                                                                                    string,
+                                                                                                    any,
+                                                                                                ],
+                                                                                                idx: number
+                                                                                            ) => (
+                                                                                                <Link
+                                                                                                    key={
+                                                                                                        idx
                                                                                                     }
-                                                                                                    height={
-                                                                                                        12
+                                                                                                    target="_blank"
+                                                                                                    href={
+                                                                                                        info.url
                                                                                                     }
-                                                                                                    className="rounded-sm"
-                                                                                                    alt=""
-                                                                                                />
-                                                                                                <span className="text-[11px] font-medium truncate">
-                                                                                                    {
-                                                                                                        domain
-                                                                                                    }
-                                                                                                </span>
-                                                                                                {info.count >
-                                                                                                    1 && (
-                                                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
+                                                                                                    title={`${info.title} (${info.url})`}
+                                                                                                    className="flex items-center gap-1.5 max-w-xs truncate py-1 px-2 rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                                                                                                >
+                                                                                                    <img
+                                                                                                        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                                                                                                        width={
+                                                                                                            12
+                                                                                                        }
+                                                                                                        height={
+                                                                                                            12
+                                                                                                        }
+                                                                                                        className="rounded-sm"
+                                                                                                        alt=""
+                                                                                                    />
+                                                                                                    <span className="text-[11px] font-medium truncate">
                                                                                                         {
-                                                                                                            info.count
+                                                                                                            domain
                                                                                                         }
                                                                                                     </span>
-                                                                                                )}
-                                                                                            </Link>
-                                                                                        )
-                                                                                    )}
+                                                                                                    {info.count >
+                                                                                                        1 && (
+                                                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-700 flex-shrink-0">
+                                                                                                            {
+                                                                                                                info.count
+                                                                                                            }
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </Link>
+                                                                                            )
+                                                                                        )}
+                                                                                </div>
                                                                             </div>
-                                                                        </div>
-                                                                    )}
+                                                                        )}
 
-                                                                    {/* Analysis Result for this goal */}
-                                                                    {/* {goal.analysis.state === 'result' && goal.analysis.data && (
-                                                                        <div className="space-y-1 pt-2">
-                                                                              <div className="text-[11px] font-medium text-neutral-400">
-                                                                                 Analysis Summary
-                                                                              </div>
-                                                                              <p className="text-xs text-neutral-300 bg-neutral-800/30 p-2 rounded-md border border-neutral-800">
-                                                                                 {typeof goal.analysis.data === 'string'
-                                                                                     ? goal.analysis.data
-                                                                                     : JSON.stringify(goal.analysis.data)}
-                                                                              </p>
-                                                                         </div>
-                                                                    )} */}
+                                                                        {/* Analysis Result for this goal */}
+                                                                        {/* {goal.analysis.state === 'result' && goal.analysis.data && (
+                                                                            <div className="space-y-1 pt-2">
+                                                                                  <div className="text-[11px] font-medium text-neutral-400">
+                                                                                     Analysis Summary
+                                                                                  </div>
+                                                                                  <p className="text-xs text-neutral-300 bg-neutral-800/30 p-2 rounded-md border border-neutral-800">
+                                                                                     {typeof goal.analysis.data === 'string'
+                                                                                         ? goal.analysis.data
+                                                                                         : JSON.stringify(goal.analysis.data)}
+                                                                                  </p>
+                                                                             </div>
+                                                                        )} */}
 
-                                                                    {/* Replaced Analysis Summary with Goal-Specific Sources */}
-                                                                </div>
-                                                            </DisclosureContent>
-                                                        </Disclosure>
-                                                    </div>
-                                                );
+                                                                        {/* Replaced Analysis Summary with Goal-Specific Sources */}
+                                                                    </div>
+                                                                </DisclosureContent>
+                                                            </Disclosure>
+                                                        </div>
+                                                    );
+                                                } catch (err) {
+                                                    console.error('Error rendering goal:', err);
+                                                    return null;
+                                                }
                                             })}
                                         </div>
                                     </div>
