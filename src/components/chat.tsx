@@ -1,7 +1,7 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Message, useChat } from '@ai-sdk/react';
+import { useEffect, useState } from 'react';
+import { useChat, Message } from '@ai-sdk/react';
 import { cn } from '@/lib/utils';
 
 import { ScrollArea } from '@/components/ui/scroll-area';

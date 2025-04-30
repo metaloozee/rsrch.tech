@@ -18,6 +18,8 @@ import { anthropic, AnthropicProviderOptions } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 
 import { mistral } from '@ai-sdk/mistral';
+import crypto from 'crypto';
+
 export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
@@ -33,6 +35,15 @@ export interface SearchResult {
     query: string;
     result: any;
     error?: any;
+}
+
+function createResultsHash(results: any[]): string {
+    if (!results || !Array.isArray(results) || results.length === 0) {
+        return 'empty';
+    }
+    const sortedResults = [...results].sort((a, b) => (a?.url || '').localeCompare(b?.url || ''));
+    const stringified = JSON.stringify(sortedResults);
+    return crypto.createHash('md5').update(stringified).digest('hex');
 }
 
 export async function POST(req: Request) {
@@ -121,7 +132,6 @@ Respond only with the JSON Object while following the provided format / schema.
                             queries: goalItem.search_queries,
                         });
 
-                        const relevantSearchResultsForGoal: SearchResult[] = [];
                         const searchPromises = goalItem.search_queries.map(
                             async (queryItem, queryIndex) => {
                                 const queryId = `${goalId}_query_${queryIndex + 1}`;
@@ -139,19 +149,87 @@ Respond only with the JSON Object while following the provided format / schema.
                                         searchDepth:
                                             responseMode === 'concise' ? 'basic' : 'advanced',
                                     });
-
-                                    const dedupedResults = deduplicateSearchResults(res);
                                     const resultData = {
                                         query: queryItem,
-                                        result: dedupedResults,
+                                        result: res,
                                     };
-
                                     dataStream.writeMessageAnnotation({
-                                        type: 'analysis',
+                                        type: 'search',
                                         goal_id: goalId,
-                                        state: 'call',
+                                        query_id: queryId,
+                                        state: 'result',
+                                        data: {
+                                            query: queryItem,
+                                            resultCount: res?.results?.length ?? 0,
+                                        },
                                     });
+                                    return resultData;
+                                } catch (error: any) {
+                                    console.error(`Search failed for query '${queryItem}':`, error);
+                                    const errorData = {
+                                        query: queryItem,
+                                        error: error.message || 'Unknown search error',
+                                    };
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'search',
+                                        goal_id: goalId,
+                                        query_id: queryId,
+                                        state: 'error',
+                                        data: errorData,
+                                    });
+                                    return errorData;
+                                }
+                            }
+                        );
 
+                        const rawQueryResponses = await Promise.all(searchPromises);
+
+                        dataStream.writeMessageAnnotation({
+                            type: 'goal',
+                            goal_id: goalId,
+                            state: 'search_complete',
+                            raw_search_results_count: rawQueryResponses.filter(
+                                (r) => !('error' in r)
+                            ).length,
+                        });
+
+                        const uniqueResultsMap = new Map<string, SearchResult>(); // Key: hash of result content, Value: SearchResult
+                        for (const response of rawQueryResponses) {
+                            if ('error' in response || !response.result) {
+                                continue;
+                            }
+
+                            const intraDedupedResult = deduplicateSearchResults(response.result);
+
+                            if (
+                                !intraDedupedResult.results ||
+                                intraDedupedResult.results.length === 0
+                            ) {
+                                continue;
+                            }
+
+                            const resultsHash = createResultsHash(intraDedupedResult.results);
+
+                            if (!uniqueResultsMap.has(resultsHash)) {
+                                uniqueResultsMap.set(resultsHash, {
+                                    reason: '',
+                                    query: response.query,
+                                    result: intraDedupedResult,
+                                });
+                            }
+                        }
+
+                        dataStream.writeMessageAnnotation({
+                            type: 'analysis',
+                            goal_id: goalId,
+                            state: 'call',
+                            unique_results_count: uniqueResultsMap.size,
+                        });
+
+                        const relevantSearchResultsForGoal: SearchResult[] = [];
+                        const analysisPromises = Array.from(uniqueResultsMap.values()).map(
+                            async (uniqueSearchResult) => {
+                                try {
                                     const { object: searchAnalysis } = await generateObject({
                                         model: highReasoningModel,
                                         schema: z.object({
@@ -167,12 +245,10 @@ Respond only with the JSON Object while following the provided format / schema.
                                                 ),
                                         }),
                                         prompt: `
-You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
-            
-A tool was just executed to retrieve up-to-date information related to a specific goal. 
+You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining if they contain relevant and authoritative information for the specific goal.
 
 <search-results>
-${JSON.stringify(resultData)}
+${JSON.stringify(uniqueSearchResult.result)}
 </search-results>
 
 <goal>
@@ -180,77 +256,52 @@ ${goalItem.goal}
 </goal>
 
 Return only the JSON Object while following the provided format / schema.
-                                        `,
+                                       `,
                                     });
-
-                                    if (searchAnalysis.isRelevant) {
-                                        relevantSearchResultsForGoal.push({
-                                            reason: searchAnalysis.reason,
-                                            query: queryItem,
-                                            result: resultData.result,
-                                        });
-                                        dataStream.writeMessageAnnotation({
-                                            type: 'search',
-                                            goal_id: goalId,
-                                            query_id: queryId,
-                                            state: 'result',
-                                            data: resultData,
-                                        });
-                                    } else {
-                                        dataStream.writeMessageAnnotation({
-                                            type: 'search',
-                                            goal_id: goalId,
-                                            query_id: queryId,
-                                            state: 'irrelevant',
-                                            data: {
-                                                query: queryItem,
-                                                reason: searchAnalysis.reason,
-                                            },
-                                        });
-                                    }
 
                                     dataStream.writeMessageAnnotation({
                                         type: 'analysis',
                                         goal_id: goalId,
                                         state: 'result',
-                                        data: searchAnalysis,
+                                        query: uniqueSearchResult.query,
+                                        isRelevant: searchAnalysis.isRelevant,
+                                        data: { reason: searchAnalysis.reason },
                                     });
 
-                                    return searchAnalysis.isRelevant;
+                                    if (searchAnalysis.isRelevant) {
+                                        uniqueSearchResult.reason = searchAnalysis.reason;
+                                        return uniqueSearchResult;
+                                    } else {
+                                        return null;
+                                    }
                                 } catch (error: any) {
-                                    console.error(`Search failed for query '${queryItem}':`, error);
-                                    const errorData = {
-                                        query: queryItem,
-                                        result: {
-                                            error: error.message || 'Unknown search error',
-                                        },
-                                    };
-
+                                    console.error(
+                                        `Analysis failed for goal '${goalItem.goal}' query '${uniqueSearchResult.query}':`,
+                                        error
+                                    );
                                     dataStream.writeMessageAnnotation({
-                                        type: 'search',
+                                        type: 'analysis',
                                         goal_id: goalId,
-                                        query_id: queryId,
                                         state: 'error',
-                                        data: errorData,
+                                        query: uniqueSearchResult.query,
+                                        error: error.message || 'Unknown analysis error',
                                     });
-
-                                    return false;
+                                    return null;
                                 }
                             }
                         );
-                        await Promise.all(searchPromises);
 
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'search_complete',
-                            search_results_count: relevantSearchResultsForGoal.length,
-                        });
+                        const analysisResults = await Promise.all(analysisPromises);
+
+                        relevantSearchResultsForGoal.push(
+                            ...(analysisResults.filter(Boolean) as SearchResult[])
+                        );
 
                         dataStream.writeMessageAnnotation({
                             type: 'goal',
                             goal_id: goalId,
                             state: 'complete',
+                            relevant_results_count: relevantSearchResultsForGoal.length,
                         });
 
                         return relevantSearchResultsForGoal;
@@ -290,24 +341,24 @@ Return only the JSON Object while following the provided format / schema.
                             ? `
 You are an elite investigative journalist transitioning from analysis to writing. Your task is to craft a compelling, well-structured narrative based on your synthesized findings, adhering to the style and standards of The New York Times.
 
-Your goal is to write a full investigative report based on the research topic, using the provided context. Critically, you must first **determine the most logical and informative structure** for this *specific* report based on the nature of the findings, then write the report following that structure. Do **not** use a generic, predefined template if the context suggests a different organization would be clearer or more impactful.
+Your goal is to write a full investigative report based on the research topic, using the provided context which contains ONLY relevant search results vetted for the research goals. Critically, you must first **determine the most logical and informative structure** for this *specific* report based on the nature of the findings, then write the report following that structure. Do **not** use a generic, predefined template if the context suggests a different organization would be clearer or more impactful.
 
 Instructions:
 
 1.  Analyze Context & Determine Structure:
-    *   Carefully review the research topic and the findings presented in the \`Context\`.
+    *   Carefully review the research topic and the findings presented in the \`Context\`. The context contains results pre-filtered for relevance to specific research goals.
     *   Based on this analysis, decide on the most effective structure for the report. Consider organizational patterns like:
         *   Thematic: Grouping findings by key themes or arguments.
         *   Chronological: Presenting events or developments over time.
         *   Stakeholder-Based: Analyzing impacts or perspectives for different groups.
         *   Problem/Solution: Outlining a challenge and exploring potential answers.
         *   Geographical: Focusing on different locations or regions.
-        *   Key Questions: Structuring the report around answering central research questions.
+        *   Key Questions: Structuring the report around answering central research questions derived from the original goals.
     *   The structure should facilitate a clear, logical narrative flow appropriate for the specific subject matter.
 
 2.  Craft Headline & Overview:
     *   Create an attention-grabbing yet informative headline reflecting the core subject.
-    *   Write a concise opening paragraph (lede) summarizing the report's most crucial findings and their significance. This should immediately tell the reader what the story is about and why it matters.
+    *   Write a concise opening paragraph (lede) summarizing the report's most crucial findings and their significance, drawing directly from the relevant context provided. This should immediately tell the reader what the story is about and why it matters.
 
 3.  Develop the Report Body:
     *   Organize the main content according to the structure you determined in Step 1.
@@ -321,11 +372,11 @@ Instructions:
 
 5.  Integrate Evidence & Citations:
     *   Ensure *all* objective claims, facts, statistics, and direct quotes are supported by inline citations immediately following the sentence or paragraph they support.
-    *   Format citations as: \`[Source Title](URL)\`. Use clear, descriptive source titles and the exact URL provided in the \`Context\`.
+    *   Format citations as: \`[Source Title](URL)\`. Use clear, descriptive source titles and the exact URL provided in the \`Context\`. The \`Context\` provides vetted, relevant sources.
 
 6.  Craft a Concluding Section:
     *   Conclude the report with a dedicated \`## Conclusion\` section.
-    *   This section should synthesize the main points and key takeaways from the report.
+    *   This section should synthesize the main points and key takeaways from the report, based *only* on the relevant information presented in the \`Context\`.
     *   Briefly reiterate the significance of the findings.
     *   Offer a final perspective on the broader implications, potential future developments, or remaining unanswered questions related to the topic, based *only* on the information presented in the report and the provided \`Context\`. Avoid introducing new information not covered earlier.
 
@@ -333,25 +384,25 @@ Formatting Instructions:
 
 1.  Use Markdown formatting throughout. Use tables where appropriate for presenting data clearly.
 2.  Clearly demarcate inline math with \`$\` and block math with \`$$\`. Do not use \`$\` for currency; use standard currency codes (e.g., USD, EUR).
-3.  Position \`[Source Title](URL)\` citations *directly after* the sentence or paragraph containing the factual information they support. Every factual claim needs a citation.
+3.  Position \`[Source Title](URL)\` citations *directly after* the sentence or paragraph containing the factual information they support. Every factual claim needs a citation from the provided context.
 4.  Use clear, descriptive source titles that indicate the authority or type of source (e.g., "Official Census Report", "Interview with Dr. Jane Smith", "Peer-Reviewed Study in Nature").
 5.  Use the exact URL provided in the \`Context\` without modification.
 
-Context (Contains results for each research goal):
+Context (Contains ONLY relevant, deduplicated results for each research goal):
 
 ${JSON.stringify(finalDedupedRelevantResults)}
                     `
                             : `
-Your task is to generate a very brief summary, **no more than 5-6 sentences**, directly answering the core question implied by the research findings in the provided context.
+Your task is to generate a very brief summary, **no more than 5-6 sentences**, directly answering the core question implied by the research findings in the provided context. The context contains ONLY relevant search results.
 
 Instructions:
 1.  Identify the Absolute Core Answer: Extract only the most critical facts or conclusions from the \`Context\` that directly address the central theme or question.
 2.  Synthesize into a Single Paragraph: Combine these key points into a single, short paragraph of 5-6 sentences maximum.
 3.  Be Direct and Factual: State the findings clearly and objectively. Avoid introductory phrases, narrative flair, or section breaks.
-4.  Cite Sources Inline: Immediately follow each factual statement with its citation in the format \`[Source Title](URL)\`. Ensure all objective claims are cited using the exact URLs provided.
+4.  Cite Sources Inline: Immediately follow each factual statement with its citation in the format \`[Source Title](URL)\`. Ensure all objective claims are cited using the exact URLs provided in the relevant context.
 5.  Formatting: Use simple markdown. Use '$' for inline math and '$$' for block math where necessary (avoid for currency, use "USD"). **Do not use headings, bullet points, or any other structuring elements.**
 
-Context (Contains results for each research goal):
+Context (Contains ONLY relevant, deduplicated results for each research goal):
 
 ${JSON.stringify(finalDedupedRelevantResults)}
 
@@ -432,8 +483,8 @@ function deduplicateRelevantResults(relevantResults: SearchResult[]): SearchResu
         return relevantResults;
     }
 
-    const seenUrls = new Set<string>();
-    const dedupedResults: SearchResult[] = [];
+    const seenResultHashes = new Set<string>();
+    const dedupedFinalResults: SearchResult[] = [];
 
     for (const searchResult of relevantResults) {
         if (
@@ -441,26 +492,17 @@ function deduplicateRelevantResults(relevantResults: SearchResult[]): SearchResu
             !searchResult.result.results ||
             !Array.isArray(searchResult.result.results)
         ) {
-            dedupedResults.push(searchResult);
+            dedupedFinalResults.push(searchResult);
             continue;
         }
 
-        let uniquePrimaryUrlFound = false;
-        let hasSeenUrl = false;
-        if (searchResult.result.results.length > 0) {
-            const primaryUrl = normalizeUrl(searchResult.result.results[0].url);
-            if (seenUrls.has(primaryUrl)) {
-                hasSeenUrl = true;
-            } else {
-                seenUrls.add(primaryUrl);
-                uniquePrimaryUrlFound = true;
-            }
-        }
+        const resultHash = createResultsHash(searchResult.result.results);
 
-        if (uniquePrimaryUrlFound) {
-            dedupedResults.push(searchResult);
+        if (!seenResultHashes.has(resultHash)) {
+            seenResultHashes.add(resultHash);
+            dedupedFinalResults.push(searchResult);
         }
     }
 
-    return dedupedResults;
+    return dedupedFinalResults;
 }

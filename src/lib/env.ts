@@ -5,6 +5,7 @@ export const env = createEnv({
     server: {
         TAVILY_API_KEY: z.string().min(1).startsWith('tvly-'),
         ANTHROPIC_API_KEY: z.string().min(1).startsWith('sk-ant-'),
+        MISTRAL_API_KEY: z.string().min(1),
     },
     client: {
         NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).startsWith('phc_'),
