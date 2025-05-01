@@ -4,26 +4,20 @@ import {
     ListIcon,
     Loader2Icon,
     MapIcon,
-    SearchIcon,
-    ChevronDown,
     CheckCircle2,
     XCircle,
     FileText,
     Target,
     CircleDot,
     RefreshCw,
-    PlusCircle,
     MinusCircle,
-    MessageSquare,
 } from 'lucide-react';
-import Link from 'next/link';
 import {
     Accordion,
     AccordionItem,
     AccordionTrigger,
     AccordionContent,
 } from '@/components/ui/accordion';
-import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
 import { Message } from 'ai';
 
 export type ToolData = {
@@ -495,9 +489,9 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                     </span>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2 text-xs opacity-80">
+                            <div className="flex items-center justify-center shrink-0 gap-2 text-xs opacity-80">
                                 <StatusIcon status={overallStatusIconType} />
-                                <span>
+                                <span className="text-left truncate max-w-xl">
                                     {agentStopReason
                                         ? `Stopped: ${agentStopReason}`
                                         : overallStatusText}
@@ -506,34 +500,13 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                         </div>
                     </AccordionTrigger>
                     <AccordionContent className="bg-neutral-950/50 rounded-b-lg">
-                        <div className="p-4">
+                        <div className="p-4 last:pb-0">
                             <PhaseDisplay
                                 icon={ListIcon}
                                 title="Planning"
                                 status={plan.status}
-                                details={
-                                    plan.status === 'completed'
-                                        ? `(${plan.goalCount} Goals, ${plan.totalQueryCount} Queries Planned)`
-                                        : undefined
-                                }
+                                details={undefined}
                             >
-                                {plan.status === 'completed' &&
-                                    plan.goals &&
-                                    plan.goals.length > 0 && (
-                                        <div className="pt-1 space-y-1">
-                                            <Disclosure>
-                                                <DisclosureTrigger className="text-xs text-neutral-400 hover:text-neutral-300 flex items-center gap-1 cursor-pointer">
-                                                    Show Planned Goals{' '}
-                                                    <ChevronDown className="size-3" />
-                                                </DisclosureTrigger>
-                                                <DisclosureContent className="pt-2 space-y-1 text-xs text-neutral-400 pl-2">
-                                                    {plan.goals.map((g, idx) => (
-                                                        <div key={idx}>- {g.goal}</div>
-                                                    ))}
-                                                </DisclosureContent>
-                                            </Disclosure>
-                                        </div>
-                                    )}
                                 {plan.status === 'in_progress' && (
                                     <p className="text-xs text-neutral-400">
                                         Identifying initial research goals and queries...
@@ -628,7 +601,7 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                                                         status={goal.status}
                                                                     />
                                                                     <span
-                                                                        className="font-medium text-xs"
+                                                                        className="font-medium text-xs truncate max-w-xl"
                                                                         title={goal.goalTitle}
                                                                     >
                                                                         {goal.goalTitle}
@@ -640,8 +613,8 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                                                     </span>
                                                                     {totalQueries > 0 && (
                                                                         <span className="px-1.5 py-0.5 rounded bg-neutral-700/50">
-                                                                            {goal.searchesAttempted}
-                                                                            /{maxSearches} Searches
+                                                                            {goal.searchesAttempted}{' '}
+                                                                            Searches
                                                                         </span>
                                                                     )}
                                                                     {goal.relevantResultCountTotal >
@@ -691,144 +664,12 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                                                             )}
                                                                     </div>
 
-                                                                    {totalQueries > 0 && (
-                                                                        <div>
-                                                                            <div className="font-medium text-neutral-400 mb-1">
-                                                                                Search Queries (
-                                                                                {completedQueries}/
-                                                                                {totalQueries} Done,{' '}
-                                                                                {
-                                                                                    goal.searchesAttempted
-                                                                                }
-                                                                                /{maxSearches}{' '}
-                                                                                Attempted):
-                                                                            </div>
-                                                                            <div className="flex flex-col gap-1 pl-2">
-                                                                                {goal.searchQueries.map(
-                                                                                    (sq) => (
-                                                                                        <div
-                                                                                            key={
-                                                                                                sq.queryId
-                                                                                            }
-                                                                                            className="flex items-center gap-1.5"
-                                                                                        >
-                                                                                            <StatusIcon
-                                                                                                status={
-                                                                                                    sq.status
-                                                                                                }
-                                                                                            />
-                                                                                            <span
-                                                                                                className="text-neutral-300 truncate"
-                                                                                                title={
-                                                                                                    sq.query
-                                                                                                }
-                                                                                            >
-                                                                                                {
-                                                                                                    sq.query
-                                                                                                }
-                                                                                            </span>
-                                                                                            {sq.status ===
-                                                                                                'completed' &&
-                                                                                                sq.resultCount !==
-                                                                                                    undefined && (
-                                                                                                    <span className="text-[10px] text-neutral-500 ml-1">
-                                                                                                        (
-                                                                                                        {
-                                                                                                            sq.resultCount
-                                                                                                        }{' '}
-                                                                                                        results)
-                                                                                                    </span>
-                                                                                                )}
-                                                                                            {sq.status ===
-                                                                                                'error' && (
-                                                                                                <span
-                                                                                                    className="text-[10px] text-red-500 truncate max-w-xs ml-1"
-                                                                                                    title={
-                                                                                                        sq.error
-                                                                                                    }
-                                                                                                >
-                                                                                                    {' '}
-                                                                                                    -{' '}
-                                                                                                    {
-                                                                                                        sq.error
-                                                                                                    }
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    )
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-
                                                                     {goal.analysisLog.length >
                                                                         0 && (
                                                                         <div>
-                                                                            <div className="font-medium text-neutral-400 mb-1">
-                                                                                Last Analysis Cycle:
-                                                                            </div>
-                                                                            <div className="pl-2 flex items-center gap-1.5">
-                                                                                <StatusIcon
-                                                                                    status={
-                                                                                        goal
-                                                                                            .currentAnalysis
-                                                                                            .status
-                                                                                    }
-                                                                                />
-                                                                                <span className="capitalize text-neutral-300">
-                                                                                    {goal.currentAnalysis.status.replace(
-                                                                                        '_',
-                                                                                        ' '
-                                                                                    )}
-                                                                                </span>
-                                                                                {goal
-                                                                                    .currentAnalysis
-                                                                                    .status ===
-                                                                                    'completed' && (
-                                                                                    <span className="text-[10px] text-neutral-500 ml-1">
-                                                                                        (
-                                                                                        {
-                                                                                            goal
-                                                                                                .currentAnalysis
-                                                                                                .uniqueResultCount
-                                                                                        }{' '}
-                                                                                        unique
-                                                                                        sources
-                                                                                        processed,{' '}
-                                                                                        {
-                                                                                            goal
-                                                                                                .currentAnalysis
-                                                                                                .relevantResultCountThisIteration
-                                                                                        }{' '}
-                                                                                        relevant
-                                                                                        found)
-                                                                                    </span>
-                                                                                )}
-                                                                                {goal
-                                                                                    .currentAnalysis
-                                                                                    .status ===
-                                                                                    'error' && (
-                                                                                    <span
-                                                                                        className="text-[10px] text-red-500 truncate max-w-xs ml-1"
-                                                                                        title={
-                                                                                            goal
-                                                                                                .currentAnalysis
-                                                                                                .error
-                                                                                        }
-                                                                                    >
-                                                                                        {' '}
-                                                                                        -{' '}
-                                                                                        {
-                                                                                            goal
-                                                                                                .currentAnalysis
-                                                                                                .error
-                                                                                        }
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
                                                                             {goal.currentAnalysis
                                                                                 .newAngleFound && (
-                                                                                <div className="pl-2 text-[10px] text-yellow-400/80 mt-1">
+                                                                                <div className="text-[10px] text-yellow-400/80 mt-1">
                                                                                     {goal
                                                                                         .currentAnalysis
                                                                                         .newAngleDescription ||
@@ -860,16 +701,6 @@ function renderResearchWorkflow(workflowState: WorkflowState) {
                                     title="Report Generation"
                                     status={report.status}
                                 >
-                                    {report.status === 'in_progress' && (
-                                        <p className="text-xs text-neutral-400">
-                                            Compiling findings into the final report...
-                                        </p>
-                                    )}
-                                    {report.status === 'completed' && (
-                                        <p className="text-xs text-neutral-400">
-                                            Report generated successfully.
-                                        </p>
-                                    )}
                                     {report.status === 'error' && (
                                         <p className="text-xs text-red-400">
                                             Error generating report:{' '}
@@ -1041,7 +872,7 @@ function extractResearchSteps(message: Message): WorkflowState {
                         newAngleFound: false,
                     };
                     if (state.report.status === 'pending' && !state.agentStopReason) {
-                        state.overallStatusText = `Iteration ${state.currentIteration}: Processing Goal "${goal.goalTitle}"...`;
+                        state.overallStatusText = `Iteration ${state.currentIteration}: Processing Goal "${goal.goalTitle}"`;
                     }
                 }
                 break;
@@ -1052,7 +883,7 @@ function extractResearchSteps(message: Message): WorkflowState {
                     goal.status = 'searching';
                     const queriesInBatch = directQueries || parsedData?.queries || [];
                     if (state.report.status === 'pending' && !state.agentStopReason) {
-                        state.overallStatusText = `Iteration ${state.currentIteration}: Starting search batch (${queriesInBatch.length} queries) for "${goal.goalTitle}"...`;
+                        state.overallStatusText = `Iteration ${state.currentIteration}: Starting search batch (${queriesInBatch.length} queries) for "${goal.goalTitle}"`;
                     }
                 }
                 break;
@@ -1087,7 +918,7 @@ function extractResearchSteps(message: Message): WorkflowState {
                     searchGoal.status = 'searching';
                     state.lastSearchCall = { query: searchQuery.query };
                     if (state.report.status === 'pending' && !state.agentStopReason) {
-                        state.overallStatusText = `Iteration ${state.currentIteration}: Searching: "${searchQuery.query}"...`;
+                        state.overallStatusText = `Iteration ${state.currentIteration}: Searching: "${searchQuery.query}"`;
                     }
                 } else if (annotationState === 'result') {
                     searchQuery.status = 'completed';
@@ -1117,7 +948,7 @@ function extractResearchSteps(message: Message): WorkflowState {
                               ? parsedData.unique_results_count
                               : analysisGoalCall.currentAnalysis.uniqueResultCount;
                     if (state.report.status === 'pending' && !state.agentStopReason) {
-                        state.overallStatusText = `Iteration ${state.currentIteration}: Analyzing ${analysisGoalCall.currentAnalysis.uniqueResultCount} results for "${analysisGoalCall.goalTitle}"...`;
+                        state.overallStatusText = `Iteration ${state.currentIteration}: Analyzing ${analysisGoalCall.currentAnalysis.uniqueResultCount} results for "${analysisGoalCall.goalTitle}"`;
                     }
                 } else if (annotationState === 'error') {
                     analysisGoalCall.status = 'failed';
@@ -1192,7 +1023,7 @@ function extractResearchSteps(message: Message): WorkflowState {
                 if (annotationState === 'call') {
                     reflectGoal.status = 'reflecting';
                     if (state.report.status === 'pending' && !state.agentStopReason) {
-                        state.overallStatusText = `Iteration ${state.currentIteration}: Reflecting on findings for "${reflectGoal.goalTitle}"...`;
+                        state.overallStatusText = `Iteration ${state.currentIteration}: Reflecting on findings for "${reflectGoal.goalTitle}"`;
                     }
                 } else if (annotationState === 'result') {
                     reflectGoal.status = 'reflecting';

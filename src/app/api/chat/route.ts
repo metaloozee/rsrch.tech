@@ -27,11 +27,11 @@ const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 // const highReasoningModel = mistral('mistral-large-latest');
 // const lowReasoningModel = mistral('mistral-small-latest');
 
-// const highReasoningModel = google("gemini-2.5-pro-exp-03-25");
-// const lowReasoningModel = google("gemini-2.5-flash-preview-04-17")
+const highReasoningModel = google('gemini-2.5-pro-exp-03-25');
+const lowReasoningModel = google('gemini-2.5-flash-preview-04-17');
 
-const highReasoningModel = anthropic('claude-3-7-sonnet-20250219');
-const lowReasoningModel = anthropic('claude-3-7-sonnet-20250219');
+// const highReasoningModel = anthropic('claude-3-7-sonnet-20250219');
+// const lowReasoningModel = anthropic('claude-3-7-sonnet-20250219');
 
 export interface SearchResult {
     reason: string;
@@ -73,6 +73,10 @@ export async function POST(req: Request) {
         if (!messages || !id || !responseMode) {
             throw new Error('Invalid Body');
         }
+
+        // Extract the last user message as the original query
+        const originalQuery =
+            messages.length > 0 ? messages[messages.length - 1].content : 'No query found.';
 
         return createDataStreamResponse({
             async execute(dataStream) {
@@ -654,6 +658,14 @@ Respond ONLY with the JSON object matching the schema.`,
 
                 const finalResponse = await streamText({
                     model: highReasoningModel,
+                    providerOptions: {
+                        anthropic: {
+                            thinking: { type: 'enabled', budgetTokens: 12000 },
+                        } satisfies AnthropicProviderOptions,
+                        google: {
+                            thinkingConfig: { thinkingBudget: 12000 },
+                        } satisfies GoogleGenerativeAIProviderOptions,
+                    },
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Final Report Generation: ', error);
@@ -670,16 +682,17 @@ Respond ONLY with the JSON object matching the schema.`,
                             ? `
 You are an elite investigative journalist crafting a report based on findings gathered through an iterative research process. The provided context contains relevant search results accumulated across potentially evolving research goals.
 
-Your task is to synthesize these findings into a compelling, well-structured narrative (like a New York Times article), determining the best structure based on the *content* rather than a fixed template.
+Your task is to synthesize these findings into a compelling, well-structured narrative (like a New York Times article), determining the best structure based on the *content* rather than a fixed template, while ensuring the report directly addresses the **Original User Query**.
 
 Instructions:
 
-1.  **Analyze Context & Determine Structure:** Review the topic and the \`Context\` (relevant search results). Decide the most logical structure (thematic, chronological, etc.) for *this specific information*.
-2.  **Craft Headline & Overview:** Write a strong headline and a concise opening paragraph summarizing the key findings and their significance.
-3.  **Develop Body:** Organize the main content according to your chosen structure using descriptive Markdown headings (\`## Section Title\`). Weave in facts, quotes, and data from the \`Context\`, ensuring smooth flow.
-4.  **Maintain Style:** Write clearly, objectively, and engagingly. Explain complex points simply. Present balanced perspectives if conflicts exist.
-5.  **Cite Everything:** Support *all* factual claims, stats, and quotes with inline citations \`[Source Title](URL)\` immediately after the relevant sentence/paragraph. Use the exact titles and URLs from the \`Context\`.
-6.  **Conclude:** Write a \`## Conclusion\` summarizing the main takeaways and significance based *only* on the report's content and the \`Context\`. Briefly discuss implications or future outlook if supported by the context.
+1.  **Analyze Context & Query:** Review the **Original Query** and the \`Context\` (relevant search results).
+2.  **Determine Structure:** Decide the most logical structure (thematic, chronological, etc.) for *this specific information* to best answer the query.
+3.  **Craft Headline & Overview:** Write a strong headline and a concise opening paragraph summarizing the key findings and their significance *in relation to the query*.
+4.  **Develop Body:** Organize the main content according to your chosen structure using descriptive Markdown headings (\`## Section Title\`). Weave in facts, quotes, and data from the \`Context\`, ensuring smooth flow and relevance to the query.
+5.  **Maintain Style:** Write clearly, objectively, and engagingly. Explain complex points simply. Present balanced perspectives if conflicts exist.
+6.  **Cite Everything:** Support *all* factual claims, stats, and quotes with inline citations \`[Source Title](URL)\` immediately after the relevant sentence/paragraph. Use the exact titles and URLs from the \`Context\`.
+7.  **Conclude:** Write a \`## Conclusion\` summarizing the main takeaways and significance based *only* on the report's content and the \`Context\`, directly addressing the **Original User Query**. Briefly discuss implications or future outlook if supported by the context.
 
 Formatting:
 
@@ -689,17 +702,21 @@ Formatting:
 *   Use descriptive source titles and exact URLs from the \`Context\`.
 *   In case of currency, use \`USD\`, \`INR\` or another relevant currency code but not the symbol.
 
+<query>
+${originalQuery}
+</query>
+
 <context>
 ${JSON.stringify(finalDedupedRelevantResults)}
 </context>
                     `
                             : `
-Generate a very brief summary (5-6 sentences MAX) directly answering the core question implied by the research findings in the provided \`Context\`.
+Generate a very brief summary (5-6 sentences MAX) directly answering the core question implied by the **Original Query**, based on the research findings in the provided \`Context\`.
 
 Instructions:
-1.  Extract only the most critical facts/conclusions from the \`Context\`.
+1.  Extract only the most critical facts/conclusions from the \`Context\` relevant to the **Original Query**.
 2.  Combine into a single paragraph (5-6 sentences max).
-3.  State findings directly and objectively. No intros or narrative flair.
+3.  State findings directly and objectively, focusing on answering the query. No intros or narrative flair.
 4.  Cite *every* factual statement inline: \`[Source Title](URL)\`. Use exact titles/URLs from the \`Context\`.
 
 Formatting Instructions:
@@ -710,11 +727,16 @@ Formatting Instructions:
 *   In case of currency, use \`USD\`, \`INR\` or another relevant currency code but not the symbol.
 *   Use bullet points if helpful. Avoid headings or any other formatting.
 
+
+<query>
+${originalQuery}
+</query>
+
 <context>
 ${JSON.stringify(finalDedupedRelevantResults)}
 </context>
 
-Generate only the concise paragraph.`,
+Generate only the concise paragraph answering the query.`,
                 });
 
                 dataStream.writeMessageAnnotation({
