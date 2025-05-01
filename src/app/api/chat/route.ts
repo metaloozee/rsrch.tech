@@ -15,7 +15,7 @@ import { ResponseMode } from '@/components/chat-input';
 import { env } from '@/lib/env';
 import { tavily } from '@tavily/core';
 import { anthropic, AnthropicProviderOptions } from '@ai-sdk/anthropic';
-import { google } from '@ai-sdk/google';
+import { google, GoogleGenerativeAIProviderOptions } from '@ai-sdk/google';
 
 import { mistral } from '@ai-sdk/mistral';
 import crypto from 'crypto';
@@ -24,11 +24,14 @@ export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
-const highReasoningModel = mistral('mistral-large-latest');
-const lowReasoningModel = mistral('mistral-small-latest');
+// const highReasoningModel = mistral('mistral-large-latest');
+// const lowReasoningModel = mistral('mistral-small-latest');
 
-// const highReasoningModel = anthropic("claude-3-7-sonnet-20250219");
-// const lowReasoningModel = anthropic("claude-3-7-sonnet-20250219");
+// const highReasoningModel = google("gemini-2.5-pro-exp-03-25");
+// const lowReasoningModel = google("gemini-2.5-flash-preview-04-17")
+
+const highReasoningModel = anthropic('claude-3-7-sonnet-20250219');
+const lowReasoningModel = anthropic('claude-3-7-sonnet-20250219');
 
 export interface SearchResult {
     reason: string;
@@ -44,6 +47,15 @@ function createResultsHash(results: any[]): string {
     const sortedResults = [...results].sort((a, b) => (a?.url || '').localeCompare(b?.url || ''));
     const stringified = JSON.stringify(sortedResults);
     return crypto.createHash('md5').update(stringified).digest('hex');
+}
+
+interface Goal {
+    id: string;
+    goal: string;
+    search_queries: string[];
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    relevant_results: SearchResult[];
+    searches_attempted: number;
 }
 
 export async function POST(req: Request) {
@@ -64,152 +76,201 @@ export async function POST(req: Request) {
 
         return createDataStreamResponse({
             async execute(dataStream) {
+                const MAX_ITERATIONS = 10;
+                const MAX_GOALS = 5;
+                const MAX_SEARCHES_PER_GOAL = 2;
+
+                let iteration = 0;
+                let activeGoals: Goal[] = [];
+                let completedGoals: Goal[] = [];
+                let gatheredInformation: SearchResult[] = []; // Combined relevant results
+                let researchHistory: string[] = []; // Log of actions
+
                 dataStream.writeMessageAnnotation({
-                    type: 'plan',
-                    state: 'call',
+                    type: 'agent_init',
+                    state: 'start',
                 });
 
-                const { object: goalsData } = await generateObject({
-                    model: lowReasoningModel,
-                    schema: z.object({
-                        goals: z
-                            .array(
-                                z.object({
-                                    goal: z.string(),
-                                    search_queries: z.array(z.string()).min(1),
-                                })
-                            )
-                            .min(1),
-                    }),
-                    messages: convertToCoreMessages(messages),
-                    system: `
-You are an elite investigative journalist mapping out your strategy for a new investigation. Your first task is to deeply analyze the conversation history and define clear goals before initiating detailed research.
+                dataStream.writeMessageAnnotation({ type: 'plan', state: 'call' });
+                const initialPlanSchema = z.object({
+                    initial_goals: z
+                        .array(
+                            z.object({
+                                goal: z.string().describe('A high-level initial research goal.'),
+                                initial_search_queries: z
+                                    .array(z.string())
+                                    .min(1)
+                                    .max(responseMode === 'research' ? 3 : 1)
+                                    .describe('1-3 initial search queries for this goal.'),
+                            })
+                        )
+                        .min(1)
+                        .max(responseMode === 'research' ? 2 : 1)
+                        .describe('1-2 high-level initial research goals based on the query.'),
+                });
 
-Analyze the provided conversation history to understand its core components, nuances, and potential angles. Based on this analysis, define a set of specific goals.
-For each goal, generate multiple targeted search queries suitable for a search engine, and outline the key information or analysis required to achieve that goal later in the investigation.
+                let initialPlanData;
+                try {
+                    const { object } = await generateObject({
+                        model: lowReasoningModel,
+                        schema: initialPlanSchema,
+                        messages: convertToCoreMessages(messages),
+                        system: `
+You are a Research Strategist starting an investigation. Analyze the user's request and define 1-2 high-level initial research goals. 
+For each goal, suggest ${responseMode === 'research' ? '1-3' : '1'} focused search query to kickstart the process. Keep goals broad initially.
 
 Today's Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', weekday: 'short' })}
 
 INSTRUCTIONS:
-1. Analyze the Topic: 
-* Briefly break down the topic into its primary concepts, entities (people, organizations, places, etc.), keywords, and potential sub-topics.
-* Identify the implicit questions or areas needing investigation (e.g., What are the causes? What are the effects? Who are the key players? What is the history? What are the future trends? Are there any controversies?).
-* Consider the likely scope (timeframe, geography, etc.) suggested by the topic.
-* Consider the type of document that is most likely to contain the information you need to achieve the goal.
+1. Identify the core topic and implicit questions in the user request.
+2. Formulate ${responseMode === 'research' ? '1-2' : '1'} broad, actionable initial goals.
+3. For each goal, generate ${responseMode === 'research' ? '1-3' : '1'} targeted search queries suitable for a search engine.
 
-2. Define Goals:
-* Formulate ${responseMode === 'research' ? '3-5' : '1-3'} distinct, actionable research goals that collectively cover the key aspects identified in your analysis. Goals should be specific enough to guide the research (e.g., "Goal: Understand the historical evolution of Topic X," "Goal: Identify the primary economic impacts of Policy Y on Sector Z," "Goal: Analyze expert predictions regarding the future adoption of Technology A," "Goal: Document the main arguments for and against Initiative B").
+Respond ONLY with the JSON object matching the schema.
+`,
+                    });
+                    initialPlanData = object;
 
-3. Develop Strategy per Goal: For *each* defined goal:
-a. Generate Search Queries: Propose ${responseMode === 'research' ? '3-5' : '1-3'} specific search queries designed to find relevant information for *this goal*. These queries should be suitable for direct use with a search engine. Use varied keywords, synonyms, and consider boolean operators (AND, OR, NOT) or phrase searching ("...") where appropriate.
+                    activeGoals = initialPlanData.initial_goals.map((g, i) => ({
+                        id: `goal_${i + 1}`,
+                        goal: g.goal,
+                        search_queries: g.initial_search_queries,
+                        status: 'pending',
+                        relevant_results: [],
+                        searches_attempted: 0,
+                    }));
 
-Respond only with the JSON Object while following the provided format / schema.
-                    `,
-                });
+                    dataStream.writeMessageAnnotation({
+                        type: 'plan',
+                        state: 'result',
+                        count: activeGoals.length,
+                        data: activeGoals.map((g) => ({
+                            goal: g.goal,
+                            queries: g.search_queries,
+                        })),
+                        total_search_queries: activeGoals.reduce(
+                            (sum, g) => sum + g.search_queries.length,
+                            0
+                        ),
+                    });
+                    researchHistory.push(
+                        `Initial plan created with goals: ${activeGoals.map((g) => g.goal).join(', ')}`
+                    );
+                } catch (error: any) {
+                    console.error('Initial planning failed:', error);
+                    dataStream.writeMessageAnnotation({
+                        type: 'plan',
+                        state: 'error',
+                        error: error.message || 'Failed to generate initial plan.',
+                    });
+                    researchHistory.push(`Error during initial planning: ${error.message}`);
+                    return;
+                }
 
-                const totalSearchQueries = goalsData.goals.reduce(
-                    (total, goal) => total + goal.search_queries.length,
-                    0
-                );
+                while (
+                    activeGoals.length > 0 &&
+                    iteration < MAX_ITERATIONS &&
+                    completedGoals.length + activeGoals.length <= MAX_GOALS
+                ) {
+                    iteration++;
+                    const currentGoal = activeGoals.shift();
 
-                dataStream.writeMessageAnnotation({
-                    type: 'plan',
-                    state: 'result',
-                    count: goalsData.goals.length,
-                    data: goalsData.goals,
-                    total_search_queries: totalSearchQueries,
-                });
+                    if (!currentGoal) break;
 
-                const relevantResultsPerGoal: SearchResult[][] = await Promise.all(
-                    goalsData.goals.map(async (goalItem, goalIndex) => {
-                        const goalId = `goal_${goalIndex + 1}`;
+                    currentGoal.status = 'in_progress';
+                    const goalId = currentGoal.id;
 
+                    dataStream.writeMessageAnnotation({
+                        type: 'goal_iteration',
+                        iteration: iteration,
+                        goal_id: goalId,
+                        state: 'start',
+                        goal: currentGoal.goal,
+                        remaining_active_goals: activeGoals.length,
+                        completed_goals: completedGoals.length,
+                    });
+                    researchHistory.push(
+                        `Starting iteration ${iteration} for goal: ${currentGoal.goal}`
+                    );
+
+                    const queriesToRun = currentGoal.search_queries.slice(
+                        currentGoal.searches_attempted,
+                        currentGoal.searches_attempted + 1
+                    );
+
+                    if (queriesToRun.length > 0) {
                         dataStream.writeMessageAnnotation({
-                            type: 'goal',
+                            type: 'search_batch',
                             goal_id: goalId,
                             state: 'start',
-                            goal: goalItem.goal,
-                            queries: goalItem.search_queries,
+                            queries: queriesToRun,
                         });
 
-                        const searchPromises = goalItem.search_queries.map(
-                            async (queryItem, queryIndex) => {
-                                const queryId = `${goalId}_query_${queryIndex + 1}`;
+                        const searchPromises = queriesToRun.map(async (queryItem, idx) => {
+                            const queryIndex = currentGoal.searches_attempted + idx;
+                            const queryId = `${goalId}_query_${queryIndex + 1}`;
+                            dataStream.writeMessageAnnotation({
+                                type: 'search',
+                                goal_id: goalId,
+                                query_id: queryId,
+                                state: 'call',
+                                query: queryItem,
+                            });
+                            try {
+                                const res = await tvly.search(queryItem, {
+                                    maxResults: 2,
+                                    searchDepth: responseMode === 'concise' ? 'basic' : 'advanced',
+                                });
+                                const resultData = {
+                                    query: queryItem,
+                                    result: res,
+                                };
                                 dataStream.writeMessageAnnotation({
                                     type: 'search',
                                     goal_id: goalId,
                                     query_id: queryId,
-                                    state: 'call',
-                                    query: queryItem,
+                                    state: 'result',
+                                    data: {
+                                        query: queryItem,
+                                        resultCount: res?.results?.length ?? 0,
+                                    },
                                 });
-
-                                try {
-                                    const res = await tvly.search(queryItem, {
-                                        maxResults: 2,
-                                        searchDepth:
-                                            responseMode === 'concise' ? 'basic' : 'advanced',
-                                    });
-                                    const resultData = {
-                                        query: queryItem,
-                                        result: res,
-                                    };
-                                    dataStream.writeMessageAnnotation({
-                                        type: 'search',
-                                        goal_id: goalId,
-                                        query_id: queryId,
-                                        state: 'result',
-                                        data: {
-                                            query: queryItem,
-                                            resultCount: res?.results?.length ?? 0,
-                                        },
-                                    });
-                                    return resultData;
-                                } catch (error: any) {
-                                    console.error(`Search failed for query '${queryItem}':`, error);
-                                    const errorData = {
-                                        query: queryItem,
-                                        error: error.message || 'Unknown search error',
-                                    };
-                                    dataStream.writeMessageAnnotation({
-                                        type: 'search',
-                                        goal_id: goalId,
-                                        query_id: queryId,
-                                        state: 'error',
-                                        data: errorData,
-                                    });
-                                    return errorData;
-                                }
+                                researchHistory.push(`Search successful for query: ${queryItem}`);
+                                return resultData;
+                            } catch (error: any) {
+                                console.error(`Search failed for query '${queryItem}':`, error);
+                                const errorData = {
+                                    query: queryItem,
+                                    error: error.message || 'Unknown search error',
+                                };
+                                dataStream.writeMessageAnnotation({
+                                    type: 'search',
+                                    goal_id: goalId,
+                                    query_id: queryId,
+                                    state: 'error',
+                                    data: errorData,
+                                });
+                                researchHistory.push(
+                                    `Search failed for query: ${queryItem}: ${error.message}`
+                                );
+                                return errorData;
                             }
-                        );
-
-                        const rawQueryResponses = await Promise.all(searchPromises);
-
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'search_complete',
-                            raw_search_results_count: rawQueryResponses.filter(
-                                (r) => !('error' in r)
-                            ).length,
                         });
 
-                        const uniqueResultsMap = new Map<string, SearchResult>(); // Key: hash of result content, Value: SearchResult
+                        const rawQueryResponses = await Promise.all(searchPromises);
+                        currentGoal.searches_attempted += queriesToRun.length;
+
+                        const uniqueResultsMap = new Map<string, SearchResult>();
                         for (const response of rawQueryResponses) {
-                            if ('error' in response || !response.result) {
-                                continue;
-                            }
-
+                            if ('error' in response || !response.result) continue;
                             const intraDedupedResult = deduplicateSearchResults(response.result);
-
                             if (
                                 !intraDedupedResult.results ||
                                 intraDedupedResult.results.length === 0
-                            ) {
+                            )
                                 continue;
-                            }
 
                             const resultsHash = createResultsHash(intraDedupedResult.results);
-
                             if (!uniqueResultsMap.has(resultsHash)) {
                                 uniqueResultsMap.set(resultsHash, {
                                     reason: '',
@@ -225,58 +286,80 @@ Respond only with the JSON Object while following the provided format / schema.
                             state: 'call',
                             unique_results_count: uniqueResultsMap.size,
                         });
+                        researchHistory.push(
+                            `Analyzing ${uniqueResultsMap.size} unique search results for relevance to goal: ${currentGoal.goal}`
+                        );
 
-                        const relevantSearchResultsForGoal: SearchResult[] = [];
+                        const newRelevantSearchResults: SearchResult[] = [];
                         const analysisPromises = Array.from(uniqueResultsMap.values()).map(
                             async (uniqueSearchResult) => {
                                 try {
                                     const { object: searchAnalysis } = await generateObject({
-                                        model: highReasoningModel,
+                                        model: lowReasoningModel,
                                         schema: z.object({
                                             isRelevant: z
                                                 .boolean()
                                                 .describe(
-                                                    'Whether the result is relevant to the goal'
+                                                    'Whether the result is directly relevant to the current specific goal'
                                                 ),
                                             reason: z
                                                 .string()
+                                                .describe('Brief reason for relevance/irrelevance'),
+                                            newAngleFound: z
+                                                .boolean()
                                                 .describe(
-                                                    'A short explanation for why the result is relevant to the goal'
+                                                    'Does this result suggest a new, potentially important angle not covered by current goals?'
+                                                ),
+                                            newAngleDescription: z
+                                                .string()
+                                                .optional()
+                                                .describe(
+                                                    'If new angle found, briefly describe it.'
                                                 ),
                                         }),
                                         prompt: `
-You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining if they contain relevant and authoritative information for the specific goal.
+Analyze the following search result for relevance to the *specific* research goal and identify potential new research directions.
 
 <search-results>
 ${JSON.stringify(uniqueSearchResult.result)}
 </search-results>
 
-<goal>
-${goalItem.goal}
-</goal>
+<current-research-goal>
+${currentGoal.goal}
+</current-research-goal>
 
-Return only the JSON Object while following the provided format / schema.
-                                       `,
+Return ONLY the JSON object.`,
                                     });
 
                                     dataStream.writeMessageAnnotation({
-                                        type: 'analysis',
+                                        type: 'analysis_result',
                                         goal_id: goalId,
                                         state: 'result',
                                         query: uniqueSearchResult.query,
                                         isRelevant: searchAnalysis.isRelevant,
-                                        data: { reason: searchAnalysis.reason },
+                                        newAngleFound: searchAnalysis.newAngleFound,
+                                        data: JSON.stringify({
+                                            reason: searchAnalysis.reason,
+                                            new_angle: searchAnalysis.newAngleDescription,
+                                        }),
                                     });
 
                                     if (searchAnalysis.isRelevant) {
                                         uniqueSearchResult.reason = searchAnalysis.reason;
-                                        return uniqueSearchResult;
+                                        newRelevantSearchResults.push(uniqueSearchResult);
+                                        researchHistory.push(
+                                            `Result relevant for query ${uniqueSearchResult.query}: ${searchAnalysis.reason}`
+                                        );
                                     } else {
-                                        return null;
+                                        researchHistory.push(
+                                            `Result not relevant for query ${uniqueSearchResult.query}: ${searchAnalysis.reason}`
+                                        );
                                     }
+
+                                    return { ...uniqueSearchResult, analysis: searchAnalysis };
                                 } catch (error: any) {
                                     console.error(
-                                        `Analysis failed for goal '${goalItem.goal}' query '${uniqueSearchResult.query}':`,
+                                        `Analysis failed for goal '${currentGoal.goal}', query '${uniqueSearchResult.query}':`,
                                         error
                                     );
                                     dataStream.writeMessageAnnotation({
@@ -284,47 +367,293 @@ Return only the JSON Object while following the provided format / schema.
                                         goal_id: goalId,
                                         state: 'error',
                                         query: uniqueSearchResult.query,
-                                        error: error.message || 'Unknown analysis error',
+                                        error: error.message || 'Analysis error',
                                     });
+                                    researchHistory.push(
+                                        `Analysis failed for query ${uniqueSearchResult.query}: ${error.message}`
+                                    );
                                     return null;
                                 }
                             }
                         );
 
-                        const analysisResults = await Promise.all(analysisPromises);
-
-                        relevantSearchResultsForGoal.push(
-                            ...(analysisResults.filter(Boolean) as SearchResult[])
-                        );
+                        const analysisResultsWithAngles = (
+                            await Promise.all(analysisPromises)
+                        ).filter(Boolean);
+                        currentGoal.relevant_results.push(...newRelevantSearchResults);
+                        gatheredInformation.push(...newRelevantSearchResults);
 
                         dataStream.writeMessageAnnotation({
-                            type: 'goal',
+                            type: 'goal_progress',
                             goal_id: goalId,
-                            state: 'complete',
-                            relevant_results_count: relevantSearchResultsForGoal.length,
+                            relevant_found_this_iteration: newRelevantSearchResults.length,
+                            total_relevant_for_goal: currentGoal.relevant_results.length,
+                            searches_attempted_for_goal: currentGoal.searches_attempted,
                         });
 
-                        return relevantSearchResultsForGoal;
-                    })
-                );
+                        dataStream.writeMessageAnnotation({
+                            type: 'reflection',
+                            goal_id: goalId,
+                            state: 'call',
+                        });
+                        researchHistory.push(
+                            `Reflecting on findings for goal: ${currentGoal.goal}`
+                        );
 
-                const allRelevantSearchResults: SearchResult[] = relevantResultsPerGoal.flat();
+                        const reflectionSchema = z.object({
+                            shouldAddNewGoals: z
+                                .boolean()
+                                .describe(
+                                    "Based *only* on the 'newAngleFound' flags and descriptions in the recent analysis, are there significant new research directions worth pursuing?"
+                                ),
+                            newGoals: z
+                                .array(
+                                    z.object({
+                                        goal: z
+                                            .string()
+                                            .describe(
+                                                'A concise new research goal derived from a discovered angle.'
+                                            ),
+                                        initial_search_queries: z
+                                            .array(z.string())
+                                            .min(1)
+                                            .max(2)
+                                            .describe(
+                                                '1-2 specific search queries for this new goal.'
+                                            ),
+                                    })
+                                )
+                                .optional()
+                                .describe(
+                                    'List of new goals and queries, ONLY if shouldAddNewGoals is true.'
+                                ),
+                            assessmentOfCurrentGoal: z
+                                .enum(['completed', 'needs_more_searches', 'failed'])
+                                .describe(
+                                    `Based on relevance and searches attempted: Is the current goal ('${currentGoal.goal}') satisfactorily completed, needs more searches (if queries remain and searches attempted < MAX_SEARCHES_PER_GOAL), or should be marked failed (e.g., no relevant results after sufficient searches)?`
+                                ),
+                            nextActionSuggestion: z
+                                .string()
+                                .describe(
+                                    "Brief suggestion for the overall *next* step (e.g., 'Proceed with next goal', 'Add new goals and prioritize', 'Generate final report')."
+                                ),
+                        });
 
-                const finalDedupedRelevantResults =
-                    deduplicateRelevantResults(allRelevantSearchResults);
+                        try {
+                            const { object: reflectionResult } = await generateObject({
+                                model: lowReasoningModel,
+                                schema: reflectionSchema,
+                                prompt: `
+You are a Research Agent reflecting on the latest findings to adapt the research plan.
+
+Current Goal: ${currentGoal.goal} (Searches Attempted: ${currentGoal.searches_attempted}/${MAX_SEARCHES_PER_GOAL})
+Total Relevant Results Found for this Goal: ${currentGoal.relevant_results.length}
+
+Recent Analysis Summary (Highlights potential new angles):
+${
+    analysisResultsWithAngles
+        .filter((r) => r?.analysis?.newAngleFound)
+        .map((r) => `- Query "${r?.query}": New Angle: ${r?.analysis?.newAngleDescription}`)
+        .join('\n') || '- No significant new angles identified in this batch.'
+}
+
+All Active Goals (excluding current):
+${activeGoals.map((g) => `- ${g.goal} (Status: ${g.status})`).join('\n') || '- None'}
+
+Completed Goals:
+${completedGoals.map((g) => `- ${g.goal}`).join('\n') || '- None'}
+
+Max Searches Per Goal: ${MAX_SEARCHES_PER_GOAL}
+
+INSTRUCTIONS:
+1. Evaluate the 'newAngleFound' information. Should genuinely new, distinct goals be added? Avoid redundancy with existing active/completed goals.
+2. Assess the current goal's status. Is it done, or does it need more focused searches (if search budget allows)? Mark failed if unproductive.
+3. Propose the next logical action for the overall research process.
+
+Respond ONLY with the JSON object matching the schema.`,
+                            });
+
+                            dataStream.writeMessageAnnotation({
+                                type: 'reflection',
+                                goal_id: goalId,
+                                state: 'result',
+                                data: reflectionResult,
+                            });
+                            researchHistory.push(
+                                `Reflection Result: Add Goals: ${reflectionResult.shouldAddNewGoals}, Current Goal Status: ${reflectionResult.assessmentOfCurrentGoal}, Next Action: ${reflectionResult.nextActionSuggestion}`
+                            );
+
+                            if (reflectionResult.shouldAddNewGoals && reflectionResult.newGoals) {
+                                const newGoalCount =
+                                    completedGoals.length +
+                                    activeGoals.length +
+                                    1 +
+                                    reflectionResult.newGoals.length;
+                                if (newGoalCount <= MAX_GOALS) {
+                                    const nextGoalId =
+                                        completedGoals.length + activeGoals.length + 1;
+                                    reflectionResult.newGoals.forEach((newGoal, i) => {
+                                        const newGoalObj: Goal = {
+                                            id: `goal_${nextGoalId + i}`,
+                                            goal: newGoal.goal,
+                                            search_queries: newGoal.initial_search_queries,
+                                            status: 'pending',
+                                            relevant_results: [],
+                                            searches_attempted: 0,
+                                        };
+                                        activeGoals.push(newGoalObj);
+                                        dataStream.writeMessageAnnotation({
+                                            type: 'goal_add',
+                                            goal_id: newGoalObj.id,
+                                            goal: newGoalObj.goal,
+                                        });
+                                        researchHistory.push(`Adding new goal: ${newGoalObj.goal}`);
+                                    });
+                                } else {
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'info',
+                                        message:
+                                            'Max goals reached, skipping addition of new goals.',
+                                    });
+                                    researchHistory.push(
+                                        'Skipped adding new goals due to MAX_GOALS limit.'
+                                    );
+                                }
+                            }
+
+                            switch (reflectionResult.assessmentOfCurrentGoal) {
+                                case 'completed':
+                                    currentGoal.status = 'completed';
+                                    completedGoals.push(currentGoal);
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'goal_complete',
+                                        goal_id: goalId,
+                                        reason: 'Marked complete by reflection',
+                                    });
+                                    researchHistory.push(
+                                        `Goal marked completed: ${currentGoal.goal}`
+                                    );
+                                    break;
+                                case 'needs_more_searches':
+                                    if (
+                                        currentGoal.searches_attempted < MAX_SEARCHES_PER_GOAL &&
+                                        currentGoal.search_queries.length >
+                                            currentGoal.searches_attempted
+                                    ) {
+                                        currentGoal.status = 'pending';
+                                        activeGoals.unshift(currentGoal);
+                                        dataStream.writeMessageAnnotation({
+                                            type: 'goal_requeue',
+                                            goal_id: goalId,
+                                            reason: 'Needs more searches',
+                                        });
+                                        researchHistory.push(
+                                            `Goal requeued for more searches: ${currentGoal.goal}`
+                                        );
+                                    } else {
+                                        currentGoal.status = 'completed';
+                                        completedGoals.push(currentGoal);
+                                        dataStream.writeMessageAnnotation({
+                                            type: 'goal_complete',
+                                            goal_id: goalId,
+                                            reason: 'Search budget exhausted',
+                                        });
+                                        researchHistory.push(
+                                            `Goal marked completed (search budget exhausted): ${currentGoal.goal}`
+                                        );
+                                    }
+                                    break;
+                                case 'failed':
+                                    currentGoal.status = 'failed';
+                                    completedGoals.push(currentGoal);
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'goal_fail',
+                                        goal_id: goalId,
+                                        reason: 'Marked failed by reflection',
+                                    });
+                                    researchHistory.push(`Goal marked failed: ${currentGoal.goal}`);
+                                    break;
+                            }
+                        } catch (error: any) {
+                            console.error(
+                                `Reflection failed for goal '${currentGoal.goal}':`,
+                                error
+                            );
+                            dataStream.writeMessageAnnotation({
+                                type: 'reflection',
+                                goal_id: goalId,
+                                state: 'error',
+                                error: error.message || 'Reflection error',
+                            });
+                            researchHistory.push(
+                                `Reflection failed: ${error.message}. Marking goal completed.`
+                            );
+                            currentGoal.status = 'completed';
+                            completedGoals.push(currentGoal);
+                        }
+                    } else {
+                        currentGoal.status = 'completed';
+                        completedGoals.push(currentGoal);
+                        dataStream.writeMessageAnnotation({
+                            type: 'goal_complete',
+                            goal_id: goalId,
+                            reason: 'All queries attempted',
+                        });
+                        researchHistory.push(
+                            `Goal marked completed (all queries attempted): ${currentGoal.goal}`
+                        );
+                    }
+                }
+
+                if (iteration >= MAX_ITERATIONS) {
+                    dataStream.writeMessageAnnotation({
+                        type: 'agent_stop',
+                        reason: 'Max iterations reached',
+                    });
+                    researchHistory.push('Agent stopped: Max iterations reached.');
+                } else if (
+                    completedGoals.length + activeGoals.length >= MAX_GOALS &&
+                    activeGoals.length > 0
+                ) {
+                    dataStream.writeMessageAnnotation({
+                        type: 'agent_stop',
+                        reason: 'Max goals reached',
+                    });
+                    researchHistory.push('Agent stopped: Max goals reached.');
+                    completedGoals.push(...activeGoals);
+                    activeGoals = [];
+                } else {
+                    dataStream.writeMessageAnnotation({
+                        type: 'agent_stop',
+                        reason: 'All active goals processed',
+                    });
+                    researchHistory.push('Agent stopped: All goals processed.');
+                }
+
+                const finalDedupedRelevantResults = deduplicateRelevantResults(gatheredInformation);
 
                 dataStream.writeMessageAnnotation({
                     type: 'report',
                     state: 'call',
+                    final_results_count: finalDedupedRelevantResults.length,
+                    total_iterations: iteration,
+                    research_summary: researchHistory,
                 });
+
+                if (finalDedupedRelevantResults.length === 0) {
+                    dataStream.writeMessageAnnotation({ type: 'report', state: 'result' });
+
+                    /*
+                     * Let the final prompt handle the no-results case, or stream a simple message
+                     * For simplicity, let the final LLM call generate the "no results" message.
+                     * dataStream.write(...); Cannot directly write plain text this way easily
+                     * dataStream.close(); Close handled by finalResponse.mergeIntoDataStream
+                     * return;
+                     */
+                }
 
                 const finalResponse = await streamText({
                     model: highReasoningModel,
-                    providerOptions: {
-                        anthropic: {
-                            thinking: { type: 'enabled', budgetTokens: 12000 },
-                        } satisfies AnthropicProviderOptions,
-                    },
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Final Report Generation: ', error);
@@ -339,74 +668,53 @@ Return only the JSON Object while following the provided format / schema.
                     prompt:
                         responseMode === 'research'
                             ? `
-You are an elite investigative journalist transitioning from analysis to writing. Your task is to craft a compelling, well-structured narrative based on your synthesized findings, adhering to the style and standards of The New York Times.
+You are an elite investigative journalist crafting a report based on findings gathered through an iterative research process. The provided context contains relevant search results accumulated across potentially evolving research goals.
 
-Your goal is to write a full investigative report based on the research topic, using the provided context which contains ONLY relevant search results vetted for the research goals. Critically, you must first **determine the most logical and informative structure** for this *specific* report based on the nature of the findings, then write the report following that structure. Do **not** use a generic, predefined template if the context suggests a different organization would be clearer or more impactful.
+Your task is to synthesize these findings into a compelling, well-structured narrative (like a New York Times article), determining the best structure based on the *content* rather than a fixed template.
 
 Instructions:
 
-1.  Analyze Context & Determine Structure:
-    *   Carefully review the research topic and the findings presented in the \`Context\`. The context contains results pre-filtered for relevance to specific research goals.
-    *   Based on this analysis, decide on the most effective structure for the report. Consider organizational patterns like:
-        *   Thematic: Grouping findings by key themes or arguments.
-        *   Chronological: Presenting events or developments over time.
-        *   Stakeholder-Based: Analyzing impacts or perspectives for different groups.
-        *   Problem/Solution: Outlining a challenge and exploring potential answers.
-        *   Geographical: Focusing on different locations or regions.
-        *   Key Questions: Structuring the report around answering central research questions derived from the original goals.
-    *   The structure should facilitate a clear, logical narrative flow appropriate for the specific subject matter.
+1.  **Analyze Context & Determine Structure:** Review the topic and the \`Context\` (relevant search results). Decide the most logical structure (thematic, chronological, etc.) for *this specific information*.
+2.  **Craft Headline & Overview:** Write a strong headline and a concise opening paragraph summarizing the key findings and their significance.
+3.  **Develop Body:** Organize the main content according to your chosen structure using descriptive Markdown headings (\`## Section Title\`). Weave in facts, quotes, and data from the \`Context\`, ensuring smooth flow.
+4.  **Maintain Style:** Write clearly, objectively, and engagingly. Explain complex points simply. Present balanced perspectives if conflicts exist.
+5.  **Cite Everything:** Support *all* factual claims, stats, and quotes with inline citations \`[Source Title](URL)\` immediately after the relevant sentence/paragraph. Use the exact titles and URLs from the \`Context\`.
+6.  **Conclude:** Write a \`## Conclusion\` summarizing the main takeaways and significance based *only* on the report's content and the \`Context\`. Briefly discuss implications or future outlook if supported by the context.
 
-2.  Craft Headline & Overview:
-    *   Create an attention-grabbing yet informative headline reflecting the core subject.
-    *   Write a concise opening paragraph (lede) summarizing the report's most crucial findings and their significance, drawing directly from the relevant context provided. This should immediately tell the reader what the story is about and why it matters.
+Formatting:
 
-3.  Develop the Report Body:
-    *   Organize the main content according to the structure you determined in Step 1.
-    *   Use clear and descriptive Markdown headings (\`## Section Title\`) for each major section. These headings should reflect the specific content of the section, not generic placeholders unless truly appropriate.
-    *   Weave the key findings, facts, statistics, expert quotes, and conflicting viewpoints from the \`Context\` seamlessly into the narrative within the relevant sections. Ensure smooth transitions between points and sections.
+*   Use Markdown. Use tables if helpful.
+*   Use \`$\` for inline math, \`$$\` for block math (not currency).
+*   Position \`[Source Title](URL)\` citations accurately.
+*   Use descriptive source titles and exact URLs from the \`Context\`.
+*   In case of currency, use \`USD\`, \`INR\` or another relevant currency code but not the symbol.
 
-4.  Maintain Journalistic Style and Tone:
-    *   Write in a clear, objective, and engaging style, mirroring The New York Times.
-    *   Explain complex concepts simply without sacrificing accuracy.
-    *   Maintain objectivity. Present balanced perspectives where conflicting viewpoints exist, attributing claims appropriately. Use neutral language.
-
-5.  Integrate Evidence & Citations:
-    *   Ensure *all* objective claims, facts, statistics, and direct quotes are supported by inline citations immediately following the sentence or paragraph they support.
-    *   Format citations as: \`[Source Title](URL)\`. Use clear, descriptive source titles and the exact URL provided in the \`Context\`. The \`Context\` provides vetted, relevant sources.
-
-6.  Craft a Concluding Section:
-    *   Conclude the report with a dedicated \`## Conclusion\` section.
-    *   This section should synthesize the main points and key takeaways from the report, based *only* on the relevant information presented in the \`Context\`.
-    *   Briefly reiterate the significance of the findings.
-    *   Offer a final perspective on the broader implications, potential future developments, or remaining unanswered questions related to the topic, based *only* on the information presented in the report and the provided \`Context\`. Avoid introducing new information not covered earlier.
-
-Formatting Instructions:
-
-1.  Use Markdown formatting throughout. Use tables where appropriate for presenting data clearly.
-2.  Clearly demarcate inline math with \`$\` and block math with \`$$\`. Do not use \`$\` for currency; use standard currency codes (e.g., USD, EUR).
-3.  Position \`[Source Title](URL)\` citations *directly after* the sentence or paragraph containing the factual information they support. Every factual claim needs a citation from the provided context.
-4.  Use clear, descriptive source titles that indicate the authority or type of source (e.g., "Official Census Report", "Interview with Dr. Jane Smith", "Peer-Reviewed Study in Nature").
-5.  Use the exact URL provided in the \`Context\` without modification.
-
-Context (Contains ONLY relevant, deduplicated results for each research goal):
-
+<context>
 ${JSON.stringify(finalDedupedRelevantResults)}
+</context>
                     `
                             : `
-Your task is to generate a very brief summary, **no more than 5-6 sentences**, directly answering the core question implied by the research findings in the provided context. The context contains ONLY relevant search results.
+Generate a very brief summary (5-6 sentences MAX) directly answering the core question implied by the research findings in the provided \`Context\`.
 
 Instructions:
-1.  Identify the Absolute Core Answer: Extract only the most critical facts or conclusions from the \`Context\` that directly address the central theme or question.
-2.  Synthesize into a Single Paragraph: Combine these key points into a single, short paragraph of 5-6 sentences maximum.
-3.  Be Direct and Factual: State the findings clearly and objectively. Avoid introductory phrases, narrative flair, or section breaks.
-4.  Cite Sources Inline: Immediately follow each factual statement with its citation in the format \`[Source Title](URL)\`. Ensure all objective claims are cited using the exact URLs provided in the relevant context.
-5.  Formatting: Use simple markdown. Use '$' for inline math and '$$' for block math where necessary (avoid for currency, use "USD"). **Do not use headings, bullet points, or any other structuring elements.**
+1.  Extract only the most critical facts/conclusions from the \`Context\`.
+2.  Combine into a single paragraph (5-6 sentences max).
+3.  State findings directly and objectively. No intros or narrative flair.
+4.  Cite *every* factual statement inline: \`[Source Title](URL)\`. Use exact titles/URLs from the \`Context\`.
 
-Context (Contains ONLY relevant, deduplicated results for each research goal):
+Formatting Instructions:
+*   Use Markdown. Use tables if helpful.
+*   Use \`$\` for inline math, \`$$\` for block math (not currency).
+*   Position \`[Source Title](URL)\` citations accurately.
+*   Use descriptive source titles and exact URLs from the \`Context\`.
+*   In case of currency, use \`USD\`, \`INR\` or another relevant currency code but not the symbol.
+*   Use bullet points if helpful. Avoid headings or any other formatting.
 
+<context>
 ${JSON.stringify(finalDedupedRelevantResults)}
+</context>
 
-Generate only the concise paragraph based on these instructions.`,
+Generate only the concise paragraph.`,
                 });
 
                 dataStream.writeMessageAnnotation({
