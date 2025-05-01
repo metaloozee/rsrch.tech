@@ -735,7 +735,7 @@ function extractResearchSteps(message: Message): WorkflowState {
 
     const state: WorkflowState = {
         currentIteration: 0,
-        maxIterations: 10,
+        maxIterations: 20,
         overallStatusText: 'Initializing Research...',
         hasData: false,
         plan: { status: 'pending', goalCount: 0, totalQueryCount: 0 },

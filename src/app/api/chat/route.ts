@@ -24,11 +24,11 @@ export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
-// const highReasoningModel = mistral('mistral-large-latest');
-// const lowReasoningModel = mistral('mistral-small-latest');
+const highReasoningModel = mistral('mistral-large-latest');
+const lowReasoningModel = mistral('mistral-small-latest');
 
-const highReasoningModel = google('gemini-2.5-pro-exp-03-25');
-const lowReasoningModel = google('gemini-2.5-flash-preview-04-17');
+// const highReasoningModel = google('gemini-2.5-pro-exp-03-25');
+// const lowReasoningModel = google('gemini-2.5-flash-preview-04-17');
 
 // const highReasoningModel = anthropic('claude-3-7-sonnet-20250219');
 // const lowReasoningModel = anthropic('claude-3-7-sonnet-20250219');
@@ -74,15 +74,14 @@ export async function POST(req: Request) {
             throw new Error('Invalid Body');
         }
 
-        // Extract the last user message as the original query
         const originalQuery =
             messages.length > 0 ? messages[messages.length - 1].content : 'No query found.';
 
         return createDataStreamResponse({
             async execute(dataStream) {
-                const MAX_ITERATIONS = 10;
-                const MAX_GOALS = 5;
-                const MAX_SEARCHES_PER_GOAL = 2;
+                const MAX_ITERATIONS = responseMode === 'research' ? 20 : 5;
+                const MAX_GOALS = responseMode === 'research' ? 10 : 3;
+                const MAX_SEARCHES_PER_GOAL = responseMode === 'research' ? 3 : 1;
 
                 let iteration = 0;
                 let activeGoals: Goal[] = [];
@@ -104,19 +103,23 @@ export async function POST(req: Request) {
                                 initial_search_queries: z
                                     .array(z.string())
                                     .min(1)
-                                    .max(responseMode === 'research' ? 3 : 1)
-                                    .describe('1-3 initial search queries for this goal.'),
+                                    .max(responseMode === 'research' ? 3 : 2)
+                                    .describe('Initial search queries for this goal.'),
                             })
                         )
                         .min(1)
                         .max(responseMode === 'research' ? 2 : 1)
-                        .describe('1-2 high-level initial research goals based on the query.'),
+                        .describe('High-level initial research goals based on the query.'),
                 });
 
                 let initialPlanData;
                 try {
                     const { object } = await generateObject({
                         model: lowReasoningModel,
+                        providerOptions: {
+                            google: {} satisfies GoogleGenerativeAIProviderOptions,
+                        },
+                        output: 'object',
                         schema: initialPlanSchema,
                         messages: convertToCoreMessages(messages),
                         system: `
@@ -300,6 +303,7 @@ Respond ONLY with the JSON object matching the schema.
                                 try {
                                     const { object: searchAnalysis } = await generateObject({
                                         model: lowReasoningModel,
+                                        output: 'object',
                                         schema: z.object({
                                             isRelevant: z
                                                 .boolean()
@@ -447,6 +451,7 @@ Return ONLY the JSON object.`,
                             const { object: reflectionResult } = await generateObject({
                                 model: lowReasoningModel,
                                 schema: reflectionSchema,
+                                output: 'object',
                                 prompt: `
 You are a Research Agent reflecting on the latest findings to adapt the research plan.
 
