@@ -12,15 +12,39 @@ import { ResponseMode } from '@/components/chat-input';
 
 import { env } from '@/lib/env';
 import { tavily } from '@tavily/core';
-import { getModel } from '@/lib/ai-models';
+import { getModel, getModelCandidates } from '@/lib/ai-models';
 
 export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
-const smallModel = getModel('plan');
-const analysisModel = getModel('analysis');
 const largeModel = getModel('report');
+
+const requestBodySchema = z.object({
+    messages: z.array(z.any()),
+    id: z.string().min(1),
+    responseMode: z.enum(['concise', 'research']),
+});
+
+async function runWithFallback<T>(
+    runners: Array<() => Promise<T>>,
+    context: string
+): Promise<T> {
+    let lastError: unknown;
+
+    for (const runner of runners) {
+        try {
+            return await runner();
+        } catch (error) {
+            lastError = error;
+            console.warn(`[ai-fallback] ${context} failed, trying next candidate`, error);
+        }
+    }
+
+    throw lastError instanceof Error
+        ? lastError
+        : new Error(`All model candidates failed for ${context}`);
+}
 
 export interface SearchResult {
     query: string;
@@ -31,15 +55,17 @@ export interface SearchResult {
 
 export async function POST(req: Request) {
     try {
-        const {
-            messages,
-            id,
-            responseMode,
-        }: {
+        const parsedBody = requestBodySchema.safeParse(await req.json());
+
+        if (!parsedBody.success) {
+            return new Response('Invalid request body', { status: 400 });
+        }
+
+        const { messages, id, responseMode } = parsedBody.data as {
             messages: Message[];
             id: string;
             responseMode: ResponseMode;
-        } = await req.json();
+        };
 
         if (!messages || !id || !responseMode) {
             throw new Error('Invalid Body');
@@ -53,28 +79,35 @@ export async function POST(req: Request) {
                     state: 'call',
                 });
 
-                const { object: goalsData } = await generateObject({
-                    model: smallModel,
-                    schema: z.object({
-                        goals: z
-                            .array(
-                                z.object({
-                                    goal: z.string(),
-                                    analysis: z.string(),
-                                    search_queries: z
-                                        .array(
-                                            z.object({
-                                                topic: z.enum(['general', 'news', 'finance']),
-                                                query: z.string(),
-                                            })
-                                        )
-                                        .min(1),
-                                })
-                            )
-                            .min(1),
-                    }),
-                    messages: convertToCoreMessages(messages),
-                    system: `
+                const planningModels = getModelCandidates('plan');
+                const { object: goalsData } = await runWithFallback(
+                    planningModels.map((modelCandidate) => async () =>
+                        generateObject({
+                            model: modelCandidate,
+                            schema: z.object({
+                                goals: z
+                                    .array(
+                                        z.object({
+                                            goal: z.string(),
+                                            analysis: z.string(),
+                                            search_queries: z
+                                                .array(
+                                                    z.object({
+                                                        topic: z.enum([
+                                                            'general',
+                                                            'news',
+                                                            'finance',
+                                                        ]),
+                                                        query: z.string(),
+                                                    })
+                                                )
+                                                .min(1),
+                                        })
+                                    )
+                                    .min(1),
+                            }),
+                            messages: convertToCoreMessages(messages),
+                            system: `
 You are an elite investigative journalist mapping out your strategy for a new investigation. Your first task is to deeply analyze the conversation history and define clear goals, search strategies, and analysis plans before initiating detailed research.
 
 Analyze the provided conversation history to understand its core components, nuances, and potential angles. Based on this analysis, define a set of specific goals.
@@ -98,7 +131,10 @@ b. Outline Analysis Plan: Specify *what kind* of information needs to be extract
 
 Respond only with the JSON Object while following the provided format / schema.
                     `,
-                });
+                        })
+                    ),
+                    'goal-planning'
+                );
 
                 const totalSearchQueries = goalsData.goals.reduce(
                     (total, goal) => total + goal.search_queries.length,
@@ -205,9 +241,12 @@ Respond only with the JSON Object while following the provided format / schema.
                             state: 'call',
                         });
 
-                        const { text: searchAnalysis } = await generateText({
-                            model: analysisModel,
-                            prompt: `
+                        const analysisModels = getModelCandidates('analysis');
+                        const { text: searchAnalysis } = await runWithFallback(
+                            analysisModels.map((modelCandidate) => async () =>
+                                generateText({
+                                    model: modelCandidate,
+                                    prompt: `
 You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
 
 A tool was just executed to retrieve up-to-date information related to a specific goal. You must now analyze the returned list of results (URLs, titles, content) and recommend which ones seem most promising.
@@ -218,7 +257,10 @@ Goal: ${goalItem.goal}
 Analysis to Perform: ${goalItem.analysis}
 Search Results: ${JSON.stringify(goalSearchResults)}
                             `,
-                        });
+                                })
+                            ),
+                            `goal-analysis-${goalId}`
+                        );
 
                         dataStream.writeMessageAnnotation({
                             type: 'analysis',

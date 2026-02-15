@@ -7,9 +7,15 @@
 - Package management is now standardized on `bun` (`package.json` + `bun.lock` + README commands), removing prior manager drift.
 
 ### AI stack and routing patterns
-- The active chat route (`src/app/api/chat/route.ts`) currently imports multiple providers (`@ai-sdk/mistral`, `@ai-sdk/google`, `@ai-sdk/groq`, OpenRouter), but is configured to run both small/large models on Google (`gemini-2.5-flash-preview-04-17`) instead of Mistral.
+- The active chat route (`src/app/api/chat/route.ts`) now uses centralized provider/model selection from `src/lib/ai-models.ts` with Mistral-first defaults and env-driven overrides.
 - A deprecated route (`route-old.ts`) still contains older AI SDK patterns and Mistral setup (`mistral-small-latest`, `mistral-large-latest`) and should be either migrated or removed to avoid drift.
 - Current server orchestration is custom and prompt-heavy (plan → Tavily searches → per-goal analysis → report synthesis). This is functionally good, but should be refactored into composable units and typed contracts to support SDK/API upgrades safely.
+
+### Implemented in current modernization pass
+- Package manager standardized to Bun (`packageManager: bun@1.2.14`) and Bun-based verification scripts added.
+- AI route request payload now uses zod `safeParse` validation to return a deterministic `400` on malformed requests.
+- Added model fallback execution for planning and analysis stages (`runWithFallback` + `getModelCandidates`).
+- Dependency ranges refreshed for key AI/runtime packages where newer compatible releases are available.
 
 ### Config & environment health
 - Env schema requires `GROQ_API_KEY`, but active route does not require Groq in practice. This can block deployment unnecessarily.

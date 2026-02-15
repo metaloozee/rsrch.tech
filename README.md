@@ -41,9 +41,13 @@ TAVILY_API_KEY=your_tavily_api_key
 
 # Optional modernization config
 # AI_PROVIDER=mistral
+# AI_FALLBACK_PROVIDER=google
 # MODEL_PLAN=mistral-small-latest
+# MODEL_PLAN_FALLBACK=gemini-2.5-flash
 # MODEL_ANALYSIS=mistral-small-latest
+# MODEL_ANALYSIS_FALLBACK=gemini-2.5-flash
 # MODEL_REPORT=mistral-large-latest
+# MODEL_REPORT_FALLBACK=gemini-2.5-pro
 ```
 
 2. Install dependencies:
