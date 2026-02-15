@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
-    convertToCoreMessages,
-    createDataStreamResponse,
+    convertToModelMessages,
     generateText,
     smoothStream,
     streamText,
@@ -70,16 +69,8 @@ export async function POST(req: Request) {
             throw new Error('Invalid Body');
         }
 
-        return createDataStreamResponse({
-            async execute(dataStream) {
-                // --- Stage 1: Goal Generation ---
-                dataStream.writeMessageAnnotation({
-                    type: 'plan',
-                    state: 'call',
-                });
-
-                const planningModels = getModelCandidates('plan');
-                const { object: goalsData } = await runWithFallback(
+        const planningModels = getModelCandidates('plan');
+        const { object: goalsData } = await runWithFallback(
                     planningModels.map((modelCandidate) => async () =>
                         generateObject({
                             model: modelCandidate,
@@ -105,7 +96,7 @@ export async function POST(req: Request) {
                                     )
                                     .min(1),
                             }),
-                            messages: convertToCoreMessages(messages),
+                            messages: convertToModelMessages(messages as any),
                             system: `
 You are an elite investigative journalist mapping out your strategy for a new investigation. Your first task is to deeply analyze the conversation history and define clear goals, search strategies, and analysis plans before initiating detailed research.
 
@@ -140,41 +131,16 @@ Respond only with the JSON Object while following the provided format / schema.
                     0
                 );
 
-                dataStream.writeMessageAnnotation({
-                    type: 'plan',
-                    state: 'result',
-                    count: goalsData.goals.length,
-                    data: goalsData.goals,
-                    total_search_queries: totalSearchQueries,
-                });
+        // --- Stage 2 & 3: Parallel Search and Analysis per Goal ---
+        const allAnalysisResults = await Promise.all(
+            goalsData.goals.map(async (goalItem, goalIndex) => {
+                const goalId = `goal_${goalIndex + 1}`;
 
-                // --- Stage 2 & 3: Parallel Search and Analysis per Goal ---
-                const allAnalysisResults = await Promise.all(
-                    goalsData.goals.map(async (goalItem, goalIndex) => {
-                        const goalId = `goal_${goalIndex + 1}`;
-
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'start',
-                            goal: goalItem.goal,
-                            analysis_plan: goalItem.analysis,
-                            queries: goalItem.search_queries,
-                        });
-
-                        // --- Stage 2: Parallel Search within the Goal ---
-                        const searchResults: SearchResult[] = [];
-                        const searchPromises = goalItem.search_queries.map(
+                // --- Stage 2: Parallel Search within the Goal ---
+                const searchResults: SearchResult[] = [];
+                const searchPromises = goalItem.search_queries.map(
                             async (queryItem, queryIndex) => {
                                 const queryId = `${goalId}_query_${queryIndex + 1}`;
-                                dataStream.writeMessageAnnotation({
-                                    type: 'search',
-                                    goal_id: goalId,
-                                    query_id: queryId,
-                                    state: 'call',
-                                    topic: queryItem.topic,
-                                    query: queryItem.query,
-                                });
 
                                 try {
                                     const res = await tvly.search(queryItem.query, {
@@ -191,14 +157,6 @@ Respond only with the JSON Object while following the provided format / schema.
                                         success: true,
                                     };
                                     searchResults.push(resultData);
-
-                                    dataStream.writeMessageAnnotation({
-                                        type: 'search',
-                                        goal_id: goalId,
-                                        query_id: queryId,
-                                        state: 'result',
-                                        data: resultData,
-                                    });
                                     return resultData;
                                 } catch (error: any) {
                                     console.error(
@@ -211,37 +169,18 @@ Respond only with the JSON Object while following the provided format / schema.
                                         error: error.message || 'Unknown search error',
                                     };
                                     searchResults.push(errorData);
-                                    dataStream.writeMessageAnnotation({
-                                        type: 'search',
-                                        goal_id: goalId,
-                                        query_id: queryId,
-                                        state: 'error',
-                                        data: errorData,
-                                    });
                                     return errorData; // Return error data to maintain array structure
                                 }
                             }
                         );
 
-                        // Wait for all searches for the current goal to complete
-                        const goalSearchResults = await Promise.all(searchPromises);
+                // Wait for all searches for the current goal to complete
+                const goalSearchResults = await Promise.all(searchPromises);
 
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'search_complete',
-                            search_results_count: goalSearchResults.length,
-                        });
+                // --- Stage 3: Analysis for the Goal ---
 
-                        // --- Stage 3: Analysis for the Goal ---
-                        dataStream.writeMessageAnnotation({
-                            type: 'analysis',
-                            goal_id: goalId,
-                            state: 'call',
-                        });
-
-                        const analysisModels = getModelCandidates('analysis');
-                        const { text: searchAnalysis } = await runWithFallback(
+                const analysisModels = getModelCandidates('analysis');
+                const { text: searchAnalysis } = await runWithFallback(
                             analysisModels.map((modelCandidate) => async () =>
                                 generateText({
                                     model: modelCandidate,
@@ -261,21 +200,8 @@ Search Results: ${JSON.stringify(goalSearchResults)}
                             `goal-analysis-${goalId}`
                         );
 
-                        dataStream.writeMessageAnnotation({
-                            type: 'analysis',
-                            goal_id: goalId,
-                            state: 'result',
-                            data: searchAnalysis,
-                        });
-
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'complete',
-                        });
-
-                        // Return analysis and original goal/search info for final report context
-                        return {
+                // Return analysis and original goal/search info for final report context
+                return {
                             goal: goalItem.goal,
                             analysis_plan: goalItem.analysis,
                             search_results: goalSearchResults,
@@ -284,24 +210,13 @@ Search Results: ${JSON.stringify(goalSearchResults)}
                     })
                 );
 
-                // --- Stage 4: Final Report Generation ---
-                dataStream.writeMessageAnnotation({
-                    type: 'report',
-                    state: 'call',
-                });
+        // --- Stage 4: Final Report Generation ---
 
-                const finalResponse = await streamText({
+        const finalResponse = await streamText({
                     model: largeModel,
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Final Report Generation: ', error);
-                        dataStream.writeMessageAnnotation({
-                            type: 'report',
-                            state: 'error',
-                            error:
-                                (error as Error).message ||
-                                'Unknown error during report generation',
-                        });
                     },
                     prompt:
                         responseMode === 'research'
@@ -376,15 +291,7 @@ ${JSON.stringify(allAnalysisResults)}
 Generate only the concise paragraph based on these instructions.`,
                 });
 
-                dataStream.writeMessageAnnotation({
-                    type: 'report',
-                    state: 'result',
-                });
-
-                finalResponse.consumeStream();
-                return finalResponse.mergeIntoDataStream(dataStream);
-            },
-        });
+        return finalResponse.toTextStreamResponse();
     } catch (error) {
         console.error(error);
         return new Response((error as Error).message, { status: 500 });
