@@ -12,7 +12,6 @@
         "prepare": "husky"
     },
     "dependencies": {
-        "@ai-sdk/cerebras": "^3.0.0",
         "@ai-sdk/google": "^3.0.0",
         "@ai-sdk/groq": "^3.0.0",
         "@ai-sdk/mistral": "^3.0.0",
@@ -61,7 +60,7 @@
         "sonner": "^2.0.1",
         "tailwind-merge": "^3.0.2",
         "tailwindcss-animate": "^1.0.7",
-        "zod": "^3.24.2"
+        "zod": "^4.0.0"
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4",

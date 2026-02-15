@@ -23,6 +23,7 @@
 
 ### Dependency posture (high-level)
 - AI SDK packages were upgraded to modern majors (`@ai-sdk/*` v3 and `ai` v6); next modernization steps should focus on runtime compatibility checks and end-to-end validation.
+- Removed unused `@ai-sdk/cerebras` to avoid install failures from unavailable version ranges during deployment.
 - UI ecosystem includes current-generation Radix + Tailwind v4 styles, but should still be batch-upgraded with strict lockfile refresh and smoke testing.
 
 ---
