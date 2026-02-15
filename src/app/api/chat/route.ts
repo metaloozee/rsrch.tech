@@ -1,33 +1,48 @@
 import { z } from 'zod';
 import {
-    convertToCoreMessages,
-    createDataStreamResponse,
+    convertToModelMessages,
     generateText,
-    NoSuchToolError,
     smoothStream,
     streamText,
-    tool,
-    Message,
     generateObject,
 } from 'ai';
 import { ResponseMode } from '@/components/chat-input';
 
 import { env } from '@/lib/env';
-import { mistral } from '@ai-sdk/mistral';
-import { openrouter } from '@openrouter/ai-sdk-provider';
-import { groq } from '@ai-sdk/groq';
 import { tavily } from '@tavily/core';
-import { google } from '@ai-sdk/google';
+import { getModel, getModelCandidates } from '@/lib/ai-models';
 
 export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
-// const smallModel = mistral('mistral-small-latest');
-// const largeModel = mistral('mistral-small-latest');
+const largeModel = getModel('report');
 
-const smallModel = google('gemini-2.5-flash-preview-04-17');
-const largeModel = google('gemini-2.5-flash-preview-04-17');
+const requestBodySchema = z.object({
+    messages: z.array(z.any()),
+    id: z.string().min(1),
+    responseMode: z.enum(['concise', 'research']),
+});
+
+async function runWithFallback<T>(
+    runners: Array<() => Promise<T>>,
+    context: string
+): Promise<T> {
+    let lastError: unknown;
+
+    for (const runner of runners) {
+        try {
+            return await runner();
+        } catch (error) {
+            lastError = error;
+            console.warn(`[ai-fallback] ${context} failed, trying next candidate`, error);
+        }
+    }
+
+    throw lastError instanceof Error
+        ? lastError
+        : new Error(`All model candidates failed for ${context}`);
+}
 
 export interface SearchResult {
     query: string;
@@ -38,50 +53,51 @@ export interface SearchResult {
 
 export async function POST(req: Request) {
     try {
-        const {
-            messages,
-            id,
-            responseMode,
-        }: {
-            messages: Message[];
+        const parsedBody = requestBodySchema.safeParse(await req.json());
+
+        if (!parsedBody.success) {
+            return new Response('Invalid request body', { status: 400 });
+        }
+
+        const { messages, id, responseMode } = parsedBody.data as {
+            messages: Array<Record<string, unknown>>;
             id: string;
             responseMode: ResponseMode;
-        } = await req.json();
+        };
 
         if (!messages || !id || !responseMode) {
             throw new Error('Invalid Body');
         }
 
-        return createDataStreamResponse({
-            async execute(dataStream) {
-                // --- Stage 1: Goal Generation ---
-                dataStream.writeMessageAnnotation({
-                    type: 'plan',
-                    state: 'call',
-                });
-
-                const { object: goalsData } = await generateObject({
-                    model: smallModel,
-                    schema: z.object({
-                        goals: z
-                            .array(
-                                z.object({
-                                    goal: z.string(),
-                                    analysis: z.string(),
-                                    search_queries: z
-                                        .array(
-                                            z.object({
-                                                topic: z.enum(['general', 'news', 'finance']),
-                                                query: z.string(),
-                                            })
-                                        )
-                                        .min(1),
-                                })
-                            )
-                            .min(1),
-                    }),
-                    messages: convertToCoreMessages(messages),
-                    system: `
+        const planningModels = getModelCandidates('plan');
+        const { object: goalsData } = await runWithFallback(
+                    planningModels.map((modelCandidate) => async () =>
+                        generateObject({
+                            model: modelCandidate,
+                            schema: z.object({
+                                goals: z
+                                    .array(
+                                        z.object({
+                                            goal: z.string(),
+                                            analysis: z.string(),
+                                            search_queries: z
+                                                .array(
+                                                    z.object({
+                                                        topic: z.enum([
+                                                            'general',
+                                                            'news',
+                                                            'finance',
+                                                        ]),
+                                                        query: z.string(),
+                                                    })
+                                                )
+                                                .min(1),
+                                        })
+                                    )
+                                    .min(1),
+                            }),
+                            messages: convertToModelMessages(messages as any),
+                            system: `
 You are an elite investigative journalist mapping out your strategy for a new investigation. Your first task is to deeply analyze the conversation history and define clear goals, search strategies, and analysis plans before initiating detailed research.
 
 Analyze the provided conversation history to understand its core components, nuances, and potential angles. Based on this analysis, define a set of specific goals.
@@ -105,48 +121,26 @@ b. Outline Analysis Plan: Specify *what kind* of information needs to be extract
 
 Respond only with the JSON Object while following the provided format / schema.
                     `,
-                });
+                        })
+                    ),
+                    'goal-planning'
+                );
 
                 const totalSearchQueries = goalsData.goals.reduce(
                     (total, goal) => total + goal.search_queries.length,
                     0
                 );
 
-                dataStream.writeMessageAnnotation({
-                    type: 'plan',
-                    state: 'result',
-                    count: goalsData.goals.length,
-                    data: goalsData.goals,
-                    total_search_queries: totalSearchQueries,
-                });
+        // --- Stage 2 & 3: Parallel Search and Analysis per Goal ---
+        const allAnalysisResults = await Promise.all(
+            goalsData.goals.map(async (goalItem, goalIndex) => {
+                const goalId = `goal_${goalIndex + 1}`;
 
-                // --- Stage 2 & 3: Parallel Search and Analysis per Goal ---
-                const allAnalysisResults = await Promise.all(
-                    goalsData.goals.map(async (goalItem, goalIndex) => {
-                        const goalId = `goal_${goalIndex + 1}`;
-
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'start',
-                            goal: goalItem.goal,
-                            analysis_plan: goalItem.analysis,
-                            queries: goalItem.search_queries,
-                        });
-
-                        // --- Stage 2: Parallel Search within the Goal ---
-                        const searchResults: SearchResult[] = [];
-                        const searchPromises = goalItem.search_queries.map(
+                // --- Stage 2: Parallel Search within the Goal ---
+                const searchResults: SearchResult[] = [];
+                const searchPromises = goalItem.search_queries.map(
                             async (queryItem, queryIndex) => {
                                 const queryId = `${goalId}_query_${queryIndex + 1}`;
-                                dataStream.writeMessageAnnotation({
-                                    type: 'search',
-                                    goal_id: goalId,
-                                    query_id: queryId,
-                                    state: 'call',
-                                    topic: queryItem.topic,
-                                    query: queryItem.query,
-                                });
 
                                 try {
                                     const res = await tvly.search(queryItem.query, {
@@ -163,14 +157,6 @@ Respond only with the JSON Object while following the provided format / schema.
                                         success: true,
                                     };
                                     searchResults.push(resultData);
-
-                                    dataStream.writeMessageAnnotation({
-                                        type: 'search',
-                                        goal_id: goalId,
-                                        query_id: queryId,
-                                        state: 'result',
-                                        data: resultData,
-                                    });
                                     return resultData;
                                 } catch (error: any) {
                                     console.error(
@@ -183,38 +169,22 @@ Respond only with the JSON Object while following the provided format / schema.
                                         error: error.message || 'Unknown search error',
                                     };
                                     searchResults.push(errorData);
-                                    dataStream.writeMessageAnnotation({
-                                        type: 'search',
-                                        goal_id: goalId,
-                                        query_id: queryId,
-                                        state: 'error',
-                                        data: errorData,
-                                    });
                                     return errorData; // Return error data to maintain array structure
                                 }
                             }
                         );
 
-                        // Wait for all searches for the current goal to complete
-                        const goalSearchResults = await Promise.all(searchPromises);
+                // Wait for all searches for the current goal to complete
+                const goalSearchResults = await Promise.all(searchPromises);
 
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'search_complete',
-                            search_results_count: goalSearchResults.length,
-                        });
+                // --- Stage 3: Analysis for the Goal ---
 
-                        // --- Stage 3: Analysis for the Goal ---
-                        dataStream.writeMessageAnnotation({
-                            type: 'analysis',
-                            goal_id: goalId,
-                            state: 'call',
-                        });
-
-                        const { text: searchAnalysis } = await generateText({
-                            model: smallModel,
-                            prompt: `
+                const analysisModels = getModelCandidates('analysis');
+                const { text: searchAnalysis } = await runWithFallback(
+                            analysisModels.map((modelCandidate) => async () =>
+                                generateText({
+                                    model: modelCandidate,
+                                    prompt: `
 You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
 
 A tool was just executed to retrieve up-to-date information related to a specific goal. You must now analyze the returned list of results (URLs, titles, content) and recommend which ones seem most promising.
@@ -225,23 +195,13 @@ Goal: ${goalItem.goal}
 Analysis to Perform: ${goalItem.analysis}
 Search Results: ${JSON.stringify(goalSearchResults)}
                             `,
-                        });
+                                })
+                            ),
+                            `goal-analysis-${goalId}`
+                        );
 
-                        dataStream.writeMessageAnnotation({
-                            type: 'analysis',
-                            goal_id: goalId,
-                            state: 'result',
-                            data: searchAnalysis,
-                        });
-
-                        dataStream.writeMessageAnnotation({
-                            type: 'goal',
-                            goal_id: goalId,
-                            state: 'complete',
-                        });
-
-                        // Return analysis and original goal/search info for final report context
-                        return {
+                // Return analysis and original goal/search info for final report context
+                return {
                             goal: goalItem.goal,
                             analysis_plan: goalItem.analysis,
                             search_results: goalSearchResults,
@@ -250,24 +210,13 @@ Search Results: ${JSON.stringify(goalSearchResults)}
                     })
                 );
 
-                // --- Stage 4: Final Report Generation ---
-                dataStream.writeMessageAnnotation({
-                    type: 'report',
-                    state: 'call',
-                });
+        // --- Stage 4: Final Report Generation ---
 
-                const finalResponse = await streamText({
+        const finalResponse = await streamText({
                     model: largeModel,
                     experimental_transform: smoothStream(),
                     onError: ({ error }) => {
                         console.error('Error Occurred in Final Report Generation: ', error);
-                        dataStream.writeMessageAnnotation({
-                            type: 'report',
-                            state: 'error',
-                            error:
-                                (error as Error).message ||
-                                'Unknown error during report generation',
-                        });
                     },
                     prompt:
                         responseMode === 'research'
@@ -342,15 +291,7 @@ ${JSON.stringify(allAnalysisResults)}
 Generate only the concise paragraph based on these instructions.`,
                 });
 
-                dataStream.writeMessageAnnotation({
-                    type: 'report',
-                    state: 'result',
-                });
-
-                finalResponse.consumeStream();
-                return finalResponse.mergeIntoDataStream(dataStream);
-            },
-        });
+        return finalResponse.toTextStreamResponse();
     } catch (error) {
         console.error(error);
         return new Response((error as Error).message, { status: 500 });

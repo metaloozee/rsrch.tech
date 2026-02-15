@@ -22,11 +22,11 @@ This project is under active development. Below are some of the planned improvem
 
 ## Tech Stack
 
-- **Framework**: [Next.js 15](https://nextjs.org/)
+- **Framework**: [Next.js 16](https://nextjs.org/)
 
 - **AI Processing**:
     - [Mistral AI](https://mistral.ai/) (mistral-small-latest and mistral-large-latest)
-    - [AI SDK](https://www.ai-sdk.dev/) for React integration
+    - [AI SDK v6](https://www.ai-sdk.dev/) for React integration
 - **Search Engine**: [Tavily API](https://tavily.com/) for web search functionality
 
 ## Getting Started
@@ -38,6 +38,16 @@ First, set up your environment variables:
 ```
 MISTRAL_API_KEY=your_mistral_api_key
 TAVILY_API_KEY=your_tavily_api_key
+
+# Optional modernization config
+# AI_PROVIDER=mistral
+# AI_FALLBACK_PROVIDER=google
+# MODEL_PLAN=mistral-small-latest
+# MODEL_PLAN_FALLBACK=gemini-2.5-flash
+# MODEL_ANALYSIS=mistral-small-latest
+# MODEL_ANALYSIS_FALLBACK=gemini-2.5-flash
+# MODEL_REPORT=mistral-large-latest
+# MODEL_REPORT_FALLBACK=gemini-2.5-pro
 ```
 
 2. Install dependencies:
@@ -73,3 +83,7 @@ To learn more about the technologies used in this project:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Modernization Plan
+
+A comprehensive 2026 modernization and upgrade plan (dependencies, architecture, Mistral model strategy, and AI SDK migration approach) is documented in [`docs/modernization-plan.md`](docs/modernization-plan.md).
