@@ -3,7 +3,7 @@
 ## 1) Current-state findings
 
 ### Runtime and framework
-- The app is on **Next.js 15.2.3** + **React 19** + **TypeScript 5**, with `reactCompiler` enabled in `next.config.ts`.
+- The app is on **Next.js 15.3.0** + **React 19** + **TypeScript 5**, with `reactCompiler` enabled in `next.config.ts`.
 - Package management is now standardized on `bun` (`package.json` + `bun.lock` + README commands), removing prior manager drift.
 
 ### AI stack and routing patterns
