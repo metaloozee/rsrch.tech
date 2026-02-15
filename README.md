@@ -38,6 +38,12 @@ First, set up your environment variables:
 ```
 MISTRAL_API_KEY=your_mistral_api_key
 TAVILY_API_KEY=your_tavily_api_key
+
+# Optional modernization config
+# AI_PROVIDER=mistral
+# MODEL_PLAN=mistral-small-latest
+# MODEL_ANALYSIS=mistral-small-latest
+# MODEL_REPORT=mistral-large-latest
 ```
 
 2. Install dependencies:
@@ -73,3 +79,7 @@ To learn more about the technologies used in this project:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Modernization Plan
+
+A comprehensive 2026 modernization and upgrade plan (dependencies, architecture, Mistral model strategy, and AI SDK migration approach) is documented in [`docs/modernization-plan.md`](docs/modernization-plan.md).

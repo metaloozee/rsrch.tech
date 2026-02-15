@@ -3,31 +3,24 @@ import {
     convertToCoreMessages,
     createDataStreamResponse,
     generateText,
-    NoSuchToolError,
     smoothStream,
     streamText,
-    tool,
     Message,
     generateObject,
 } from 'ai';
 import { ResponseMode } from '@/components/chat-input';
 
 import { env } from '@/lib/env';
-import { mistral } from '@ai-sdk/mistral';
-import { openrouter } from '@openrouter/ai-sdk-provider';
-import { groq } from '@ai-sdk/groq';
 import { tavily } from '@tavily/core';
-import { google } from '@ai-sdk/google';
+import { getModel } from '@/lib/ai-models';
 
 export const maxDuration = 60;
 
 const tvly = tavily({ apiKey: env.TAVILY_API_KEY });
 
-// const smallModel = mistral('mistral-small-latest');
-// const largeModel = mistral('mistral-small-latest');
-
-const smallModel = google('gemini-2.5-flash-preview-04-17');
-const largeModel = google('gemini-2.5-flash-preview-04-17');
+const smallModel = getModel('plan');
+const analysisModel = getModel('analysis');
+const largeModel = getModel('report');
 
 export interface SearchResult {
     query: string;
@@ -213,7 +206,7 @@ Respond only with the JSON Object while following the provided format / schema.
                         });
 
                         const { text: searchAnalysis } = await generateText({
-                            model: smallModel,
+                            model: analysisModel,
                             prompt: `
 You are a diligent Research Assistant specializing in information triage. Your task is to quickly evaluate a list of search engine results, determining which ones are most likely to contain relevant and authoritative information for the specific goal.
 

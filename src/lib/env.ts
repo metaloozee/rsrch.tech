@@ -5,7 +5,13 @@ export const env = createEnv({
     server: {
         MISTRAL_API_KEY: z.string().min(1),
         TAVILY_API_KEY: z.string().min(1).startsWith('tvly-'),
-        GROQ_API_KEY: z.string().min(1).startsWith('gsk_'),
+        GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
+        GROQ_API_KEY: z.string().min(1).startsWith('gsk_').optional(),
+        OPENROUTER_API_KEY: z.string().min(1).optional(),
+        AI_PROVIDER: z.enum(['mistral', 'google']).optional(),
+        MODEL_PLAN: z.string().min(1).optional(),
+        MODEL_ANALYSIS: z.string().min(1).optional(),
+        MODEL_REPORT: z.string().min(1).optional(),
     },
     client: {
         // NEXT_PUBLIC_PUBLISHABLE_KEY: z.string().min(1),
