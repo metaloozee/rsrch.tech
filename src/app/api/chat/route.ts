@@ -5,7 +5,6 @@ import {
     generateText,
     smoothStream,
     streamText,
-    Message,
     generateObject,
 } from 'ai';
 import { ResponseMode } from '@/components/chat-input';
@@ -62,7 +61,7 @@ export async function POST(req: Request) {
         }
 
         const { messages, id, responseMode } = parsedBody.data as {
-            messages: Message[];
+            messages: Array<Record<string, unknown>>;
             id: string;
             responseMode: ResponseMode;
         };

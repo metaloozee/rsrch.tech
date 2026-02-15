@@ -3,7 +3,7 @@
 ## 1) Current-state findings
 
 ### Runtime and framework
-- The app is on **Next.js 15.3.0** + **React 19** + **TypeScript 5**, with `reactCompiler` enabled in `next.config.ts`.
+- The app is on **Next.js 16** + **React 19** + **TypeScript 5**.
 - Package management is now standardized on `bun` (`package.json` + `bun.lock` + README commands), removing prior manager drift.
 
 ### AI stack and routing patterns
@@ -22,7 +22,7 @@
 - No explicit CI/test pipeline is defined in `package.json` beyond lint.
 
 ### Dependency posture (high-level)
-- AI SDK packages are on older 1.x lines (`@ai-sdk/*` and `ai` 4.x), likely missing newer API ergonomics and provider features.
+- AI SDK packages were upgraded to modern majors (`@ai-sdk/*` v3 and `ai` v6); next modernization steps should focus on runtime compatibility checks and end-to-end validation.
 - UI ecosystem includes current-generation Radix + Tailwind v4 styles, but should still be batch-upgraded with strict lockfile refresh and smoke testing.
 
 ---
@@ -61,7 +61,7 @@ Implementation pattern:
 - provider fallback list: Mistral primary, OpenRouter secondary (optional), Google tertiary (optional).
 
 ### C. AI SDK modernization direction
-1. Consolidate on **current Vercel AI SDK APIs** and remove deprecated options.
+1. Consolidate on **AI SDK v6 patterns** and remove deprecated options.
 2. Use a shared model factory (`lib/ai/models.ts`) so provider/model switches are centralized.
 3. Normalize stream/event annotations into typed discriminated unions used by UI renderer.
 4. Introduce guardrails around tool calling:

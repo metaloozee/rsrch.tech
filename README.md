@@ -22,11 +22,11 @@ This project is under active development. Below are some of the planned improvem
 
 ## Tech Stack
 
-- **Framework**: [Next.js 15](https://nextjs.org/)
+- **Framework**: [Next.js 16](https://nextjs.org/)
 
 - **AI Processing**:
     - [Mistral AI](https://mistral.ai/) (mistral-small-latest and mistral-large-latest)
-    - [AI SDK](https://www.ai-sdk.dev/) for React integration
+    - [AI SDK v6](https://www.ai-sdk.dev/) for React integration
 - **Search Engine**: [Tavily API](https://tavily.com/) for web search functionality
 
 ## Getting Started
